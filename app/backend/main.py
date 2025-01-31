@@ -97,7 +97,7 @@ def run_agent_in_directory(
     dataset_description = generate_prompt(dataset_type, years)
 
 
-    prompt = f"""This is the user question: {user_question}\n\n{dataset_description}.\n\nYou can find the dataset in this directory: {output_dir_name}. If you are asked to create any graphs save them also in this directory: {output_dir_name}"""
+    prompt = f"""This is the user question: {user_question}\n\n{dataset_description}.\n\nYou can find the dataset in this directory: {output_dir_name}. If you are asked to create any graphs save them via also in your user directory: {output_dir_name} as in fig.write_html("{output_dir_name}/your_name_for_the_graph.html") """
 
     # Note the `reset=False` so it keeps track of conversation for that session
     response_chart = agent.run(prompt, reset=False)
