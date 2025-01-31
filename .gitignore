@@ -1,0 +1,5 @@
+.vscode/
+__pycache__/
+env_agent_analytics/
+user_output/
+archive/openai-script/node_modules/
