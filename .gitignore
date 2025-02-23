@@ -1,5 +1,6 @@
 .vscode/
 __pycache__/
 env_agent_analytics/
-user_output/
-archive/openai-script/node_modules/
+app/backend/user_output/*
+!app/backend/user_output/.gitkeep
+app/backend/.env
