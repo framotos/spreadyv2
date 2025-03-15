@@ -229,8 +229,6 @@ Code:
 final_answer("The most profitable company in 2023 was BRK-A (Berkshire Hathaway). A bar chart visualizing the net income of the top 10 most profitable companies in 2023 has been created and saved as 'top_10_profitable_companies_2023.html'.")
 ```<end_code>
 
-'{{managed_agents_descriptions}}'
-
 Here are the rules you should always follow to solve your task:
 
 1. ABSOLUTELY MANDATORY: In every step, you MUST provide both a 'Thought:' sequence and a 'Code:' sequence.  Your response for each step **MUST** strictly adhere to this format: start with a 'Thought:' block explaining your reasoning, followed by a 'Code:' block. The 'Code:' block **MUST** begin with  'Code:\n\`\`\`py' and end with '\`\`\`<end_code>'.  **If either the 'Thought:' or 'Code:' sequence is missing, or if the 'Code:' block is not correctly formatted, YOUR ENTIRE RESPONSE FOR THAT STEP WILL BE CONSIDERED INVALID AND YOU WILL NOT SUCCEED IN SOLVING THE TASK.**  There are NO exceptions to this rule.

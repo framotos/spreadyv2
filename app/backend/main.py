@@ -7,6 +7,7 @@ import pandas as pd
 import plotly.express as px
 from fastapi import FastAPI, Body
 from fastapi.staticfiles import StaticFiles
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import uvicorn 
 
@@ -106,6 +107,15 @@ def run_agent_in_directory(
 
 # ---- FASTAPI SETUP ----
 app = FastAPI()
+
+# Add CORS middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3000"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # Mount the user_output directory as static so HTML files can be served directly
 app.mount("/user_output", StaticFiles(directory="user_output"), name="user_output")
