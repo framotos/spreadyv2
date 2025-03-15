@@ -4,3 +4,18 @@ env_agent_analytics/
 app/backend/user_output/*
 !app/backend/user_output/.gitkeep
 app/backend/.env
+
+# Große Dateien
+app/backend/debug.log
+app/archive/src/data_files/*.pkl
+app/archive/src/data_files/*.csv
+app/archive/*.csv
+
+# Node.js
+node_modules/
+app/frontend/node_modules/
+app/frontend/.next/
+
+# Betriebssystem-Dateien
+.DS_Store
+**/.DS_Store
