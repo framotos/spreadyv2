@@ -20,6 +20,7 @@ export interface BackendSession {
   last_message?: string;
   timestamp?: string;
   html_files?: string[];
+  output_folder?: string;
 }
 
 export interface BackendMessage {
@@ -35,6 +36,12 @@ export interface Session {
   lastMessage: string;
   timestamp: string;
   htmlFiles: string[];
+  outputFolder?: string;
+}
+
+export interface HtmlFile {
+  fileName: string;
+  outputFolder: string;
 }
 
 export interface Message {
@@ -42,6 +49,7 @@ export interface Message {
   content: string;
   sender: 'user' | 'assistant';
   htmlFiles?: string[];
+  outputFolder?: string;
 }
 
 // Legacy-Typen (für Kompatibilität mit bestehendem Code)
@@ -63,27 +71,26 @@ export interface ChatSession {
 // Komponenten-Props
 export interface ChatContainerProps {
   currentSessionId: string;
-  onSessionUpdate: () => void;
+  onSessionUpdate: (updatedSession?: Session) => void;
+  selectedHtmlFile?: HtmlFile | null;
 }
 
 export interface SidebarProps {
   currentSessionId: string | null;
   onSessionSelect: (sessionId: string) => void;
+  onHtmlFileSelect: (fileName: string, outputFolder: string, sessionId: string) => void;
+  sessions: Session[];
+  isLoading: boolean;
 }
 
 export interface NavbarItemProps {
   session: Session;
   isActive: boolean;
   onClick: () => void;
+  onHtmlFileSelect: (fileName: string, outputFolder: string, sessionId: string) => void;
 }
 
 export interface ChatInputProps {
   onSendMessage: (message: string, datasetType: DatasetType, years: number[]) => void;
   isLoading: boolean;
-}
-
-export interface ToggleButtonProps {
-  label: string;
-  isActive: boolean;
-  onClick: () => void;
 } 

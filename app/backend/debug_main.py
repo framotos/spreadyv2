@@ -3,7 +3,8 @@ import uuid
 import shutil
 import traceback
 import logging
-from typing import List, Optional
+import datetime
+from typing import List, Optional, Dict
 
 import pandas as pd
 import plotly.express as px
@@ -42,7 +43,9 @@ load_dotenv()
 GEMNINI_APIKEY = os.getenv("GEMNINI_APIKEY")
 logger.info(f"API Key (first 5 chars): {GEMNINI_APIKEY[:5] if GEMNINI_APIKEY else 'None'}")
 
+# Speichern von Sitzungsinformationen
 user_agents = {}
+sessions = {}  # Speichert Sitzungsinformationen: ID, letzter Zeitstempel, HTML-Dateien, Ausgabeordner
 
 BALANCE_DATASET_FILENAME = "balance_data_2020_2023.csv"
 INCOME_DATASET_FILENAME = "income_data_2020_2023.csv"
@@ -59,6 +62,14 @@ class AskResponse(BaseModel):
     answer: str
     output_folder: str
     html_files: List[str]
+
+
+class BackendSession(BaseModel):
+    id: str
+    last_message: Optional[str] = None
+    timestamp: Optional[str] = None
+    html_files: Optional[List[str]] = None
+    output_folder: Optional[str] = None
 
 # Create a helper to ensure each session has its own agent
 def get_or_create_agent_for_session(session_id: str) -> CodeAgent:
@@ -107,6 +118,18 @@ def get_or_create_agent_for_session(session_id: str) -> CodeAgent:
             logger.debug("CodeAgent created")
             
             user_agents[session_id] = agent
+            
+            # Initialisiere Sitzungsinformationen
+            if session_id not in sessions:
+                output_dir_name = f"user_question_output_{session_id[:4]}"
+                sessions[session_id] = {
+                    "id": session_id,
+                    "last_message": "Neue Konversation",
+                    "timestamp": datetime.datetime.now().isoformat(),
+                    "html_files": [],
+                    "output_folder": output_dir_name
+                }
+                
         return user_agents[session_id]
     except Exception as e:
         logger.error(f"Error creating agent: {str(e)}")
@@ -118,6 +141,7 @@ def run_agent_in_directory(
     user_question: str,
     dataset_type: Optional[str], # Added dataset_type
     years: Optional[List[int]],    # Added years
+    session_id: str,  # Session-ID hinzugefügt
     balance_dataset_filename: str = BALANCE_DATASET_FILENAME,
     income_dataset_filename: str = INCOME_DATASET_FILENAME,
     base_output_dir: str = "user_output"
@@ -134,7 +158,14 @@ def run_agent_in_directory(
         logger.info(f"Dataset type: {dataset_type}, Years: {years}")
         
         original_working_directory = os.getcwd()
-        output_dir_name = f"{base_output_dir}/user_question_output_" + str(uuid.uuid4())[:4]
+        
+        # Verwende den Output-Ordner aus der Session, falls vorhanden, oder erstelle einen neuen
+        if session_id in sessions and "output_folder" in sessions[session_id]:
+            output_folder_name = sessions[session_id]["output_folder"]
+        else:
+            output_folder_name = f"user_question_output_{session_id[:4]}"
+        
+        output_dir_name = f"{base_output_dir}/{output_folder_name}"
         output_directory = os.path.join(original_working_directory, output_dir_name)
         os.makedirs(output_directory, exist_ok=True)
 
@@ -193,7 +224,7 @@ async def global_exception_handler(request: Request, exc: Exception):
 # Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],
+    allow_origins=["http://localhost:3000", "http://localhost:3001", "http://localhost:3002", "http://localhost:3003"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -201,6 +232,72 @@ app.add_middleware(
 
 # Mount the user_output directory as static so HTML files can be served directly
 app.mount("/user_output", StaticFiles(directory="user_output"), name="user_output")
+
+@app.get("/sessions")
+def get_sessions():
+    """
+    Returns a list of all sessions.
+    """
+    logger.info("GET /sessions endpoint called")
+    return [
+        BackendSession(
+            id=session_id,
+            last_message=session_data.get("last_message", "Neue Konversation"),
+            timestamp=session_data.get("timestamp", datetime.datetime.now().isoformat()),
+            html_files=session_data.get("html_files", []),
+            output_folder=session_data.get("output_folder")
+        ) 
+        for session_id, session_data in sessions.items()
+    ]
+
+class UpdateSessionRequest(BaseModel):
+    last_message: Optional[str] = None
+    html_files: Optional[List[str]] = None
+    output_folder: Optional[str] = None
+
+@app.put("/sessions/{session_id}", response_model=BackendSession)
+def update_session(session_id: str, session_update: UpdateSessionRequest):
+    """
+    Updates an existing session or creates a new one if it doesn't exist.
+    """
+    logger.info(f"PUT /sessions/{session_id} endpoint called with data: {session_update}")
+    
+    # Erstelle eine neue Session, falls sie noch nicht existiert
+    if session_id not in sessions:
+        sessions[session_id] = {
+            "id": session_id,
+            "last_message": "Neue Konversation",
+            "timestamp": datetime.datetime.now().isoformat(),
+            "html_files": [],
+            "output_folder": f"user_question_output_{session_id[:4]}"
+        }
+    
+    # Aktualisiere die Sitzungsinformationen
+    if session_update.last_message is not None:
+        sessions[session_id]["last_message"] = session_update.last_message
+    
+    if session_update.output_folder is not None:
+        sessions[session_id]["output_folder"] = session_update.output_folder
+    
+    if session_update.html_files is not None:
+        # Aktualisiere bestehende HTML-Dateien, behalte alle bisherigen bei
+        current_html_files = sessions[session_id].get("html_files", [])
+        for html_file in session_update.html_files:
+            if html_file not in current_html_files:
+                current_html_files.append(html_file)
+        sessions[session_id]["html_files"] = current_html_files
+    
+    # Aktualisiere den Zeitstempel
+    sessions[session_id]["timestamp"] = datetime.datetime.now().isoformat()
+    
+    # Zurückgeben der aktualisierten Session
+    return BackendSession(
+        id=session_id,
+        last_message=sessions[session_id].get("last_message"),
+        timestamp=sessions[session_id].get("timestamp"),
+        html_files=sessions[session_id].get("html_files", []),
+        output_folder=sessions[session_id].get("output_folder")
+    )
 
 @app.post("/ask", response_model=AskResponse)
 def ask_question(payload: AskRequest):
@@ -229,7 +326,8 @@ def ask_question(payload: AskRequest):
                 agent_for_session,
                 question,
                 dataset_type, # Pass None for dataset_type as it's already set during initialization
-                years  # Pass None for years as it's already set during initialization
+                years,  # Pass None for years as it's already set during initialization
+                session_id  # Übergebe die session_id
             )
             logger.info(f"Agent response successful: {response_text[:100]}...")
         except Exception as e:
@@ -252,10 +350,15 @@ def ask_question(payload: AskRequest):
         output_folder_name = os.path.basename(output_directory)
         logger.info(f"Returning response with output folder: {output_folder_name}")
 
+        # Sitzungsinformationen werden jetzt über den /sessions/{session_id} Endpunkt aktualisiert
+        # Die Frontend-Komponente wird die Session aktualisieren, nachdem sie die Antwort erhalten hat
+
+        # Gib die aktuell gefundenen HTML-Dateien zurück
+        # Die vollständige Liste wird vom Frontend bei Bedarf abgerufen
         response = AskResponse(
             answer=response_text,
             output_folder=output_folder_name,
-            html_files=html_files
+            html_files=html_files  # Nur die neuen Dateien zurückgeben
         )
         logger.debug(f"Response object: {response}")
         return response
@@ -263,6 +366,6 @@ def ask_question(payload: AskRequest):
         logger.error(f"Error in ask_question: {str(e)}")
         logger.error(traceback.format_exc())
         raise
-    
+
 if __name__ == "__main__":
     uvicorn.run(app, host="127.0.0.1", port=8000) 

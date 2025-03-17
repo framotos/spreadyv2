@@ -158,6 +158,6 @@ def ask_question(payload: AskRequest):
         output_folder=output_folder_name,
         html_files=html_files
     )
-    
+
 if __name__ == "__main__":
-    uvicorn.run(app, host="127.0.0.1", port=8000, reload=True)
+    uvicorn.run(app, host="127.0.0.1", port=8000)

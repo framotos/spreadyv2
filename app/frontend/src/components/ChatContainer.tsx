@@ -3,10 +3,12 @@ import { askQuestion } from '@/lib/api';
 import { DatasetType, Message, ChatContainerProps } from '@/lib/types';
 import ChatInput from './ChatInput';
 import ChatMessage from './ChatMessage';
+import { generateUUID } from '@/lib/utils';
 
 const ChatContainer: React.FC<ChatContainerProps> = ({ 
   currentSessionId, 
-  onSessionUpdate 
+  onSessionUpdate,
+  selectedHtmlFile = null
 }) => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -14,16 +16,16 @@ const ChatContainer: React.FC<ChatContainerProps> = ({
 
   // Lade Willkommensnachricht beim ersten Laden
   useEffect(() => {
-    if (messages.length === 0) {
+    if (messages.length === 0 && !selectedHtmlFile) {
       setMessages([
         {
-          id: crypto.randomUUID(),
+          id: generateUUID(),
           content: 'Hallo! Ich bin dein Finanzanalyst. Wie kann ich dir heute helfen?',
           sender: 'assistant'
         }
       ]);
     }
-  }, [messages.length]);
+  }, [messages.length, selectedHtmlFile]);
 
   // Scrolle zum Ende der Nachrichten, wenn neue Nachrichten hinzugefügt werden
   useEffect(() => {
@@ -39,20 +41,22 @@ const ChatContainer: React.FC<ChatContainerProps> = ({
     console.log("Session ID geändert:", currentSessionId);
     
     // Für jetzt setzen wir nur die Willkommensnachricht zurück
-    setMessages([
-      {
-        id: crypto.randomUUID(),
-        content: 'Hallo! Ich bin dein Finanzanalyst. Wie kann ich dir heute helfen?',
-        sender: 'assistant'
-      }
-    ]);
-  }, [currentSessionId]);
+    if (!selectedHtmlFile) {
+      setMessages([
+        {
+          id: generateUUID(),
+          content: 'Hallo! Ich bin dein Finanzanalyst. Wie kann ich dir heute helfen?',
+          sender: 'assistant'
+        }
+      ]);
+    }
+  }, [currentSessionId, selectedHtmlFile]);
 
   const handleSendMessage = async (message: string, datasetType: DatasetType, years: number[]) => {
     if (!message.trim() || isLoading) return;
 
     // Füge die Benutzernachricht hinzu
-    const userMessageId = crypto.randomUUID();
+    const userMessageId = generateUUID();
     const userMessage: Message = {
       id: userMessageId,
       content: message,
@@ -67,25 +71,21 @@ const ChatContainer: React.FC<ChatContainerProps> = ({
       console.log("Zusätzliche Parameter (für spätere Backend-Integration):", { datasetType, years });
       
       // Sende die Anfrage an den Server mit der neuen API-Funktion
-      const assistantMessage = await askQuestion(currentSessionId, message);
+      const response = await askQuestion(currentSessionId, message);
       
-      console.log("Antwort erhalten:", assistantMessage);
+      console.log("Antwort erhalten:", response);
       
       // Füge die Antwort des Assistenten hinzu
-      setMessages(prev => [...prev, assistantMessage]);
+      setMessages(prev => [...prev, response.message]);
       
-      // TODO: BACKEND-INTEGRATION - Hier sollte die Sitzung im Backend aktualisiert werden,
-      // um die neuen Nachrichten zu speichern und die letzte Nachricht zu aktualisieren.
-      // Beispiel: await updateSession(currentSessionId, { lastMessage: message, messages: [...] });
-      
-      // Benachrichtige die übergeordnete Komponente über die Aktualisierung
-      onSessionUpdate();
+      // Benachrichtige die übergeordnete Komponente über die Aktualisierung mit der aktualisierten Session
+      onSessionUpdate(response.updatedSession);
     } catch (error) {
       console.error('Fehler beim Senden der Nachricht:', error);
       
       // Füge eine Fehlermeldung hinzu
       const errorMessage: Message = {
-        id: crypto.randomUUID(),
+        id: generateUUID(),
         content: 'Es ist ein Fehler aufgetreten. Bitte versuche es später noch einmal.',
         sender: 'assistant'
       };
@@ -95,6 +95,25 @@ const ChatContainer: React.FC<ChatContainerProps> = ({
       setIsLoading(false);
     }
   };
+
+  // Wenn eine HTML-Datei direkt angezeigt werden soll
+  if (selectedHtmlFile) {
+    return (
+      <div className="flex flex-col h-full bg-white rounded-lg shadow overflow-hidden">
+        <div className="p-4 border-b border-gray-200">
+          <h2 className="text-lg font-medium">{selectedHtmlFile.fileName}</h2>
+          <p className="text-sm text-gray-500">Aus Session: {currentSessionId}</p>
+        </div>
+        <div className="flex-1 p-0">
+          <iframe 
+            src={`http://localhost:8000/user_output/${selectedHtmlFile.outputFolder}/${selectedHtmlFile.fileName}`}
+            className="w-full h-full border-0"
+            title={selectedHtmlFile.fileName}
+          />
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col h-full bg-white rounded-lg shadow overflow-hidden">

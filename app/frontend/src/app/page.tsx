@@ -1,54 +1,48 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useEffect } from 'react';
 import ChatContainer from '@/components/ChatContainer';
 import Sidebar from '@/components/Sidebar';
+import { useSessionStorage } from '@/lib/hooks/useSessionStorage';
+import { useSessionData } from '@/lib/hooks/useSessionData';
+import { useHtmlFileSelection } from '@/lib/hooks/useHtmlFileSelection';
+
+// TODO: Diese Komponente hat zu viele Verantwortlichkeiten. Die Session-Logik sollte 
+// in einen eigenen Custom Hook ausgelagert werden (z.B. in /lib/hooks/useSessionManagement).
+// Das würde die Komponente vereinfachen und die Logik wiederverwendbar machen.
 
 export default function Home() {
-  const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
+  // Verwende die modularen Hooks für verschiedene Aspekte der Anwendung
+  const { sessionId, setSessionId, initializeSession } = useSessionStorage();
+  const { sessions, isLoading, updateSession } = useSessionData(sessionId);
+  const { selectedFile, selectFile, resetSelection } = useHtmlFileSelection();
 
-  // Beim ersten Laden eine neue Sitzung erstellen oder die letzte Sitzung aus dem lokalen Speicher laden
+  // Beim ersten Laden die Session initialisieren
   useEffect(() => {
-    // TODO: BACKEND-INTEGRATION - Hier sollte geprüft werden, ob eine gespeicherte Session
-    // tatsächlich im Backend existiert, bevor sie verwendet wird.
-    // Beispiel: const isValidSession = await checkSession(savedSessionId);
-    
-    const savedSessionId = localStorage.getItem('currentSessionId');
-    if (savedSessionId) {
-      setCurrentSessionId(savedSessionId);
-    } else {
-      // Erstelle eine neue Sitzung
-      const newSessionId = crypto.randomUUID();
-      setCurrentSessionId(newSessionId);
-      localStorage.setItem('currentSessionId', newSessionId);
-    }
-  }, []);
-
-  // Aktualisiere den lokalen Speicher, wenn sich die aktuelle Sitzung ändert
-  useEffect(() => {
-    if (currentSessionId) {
-      localStorage.setItem('currentSessionId', currentSessionId);
-    }
-  }, [currentSessionId]);
+    initializeSession();
+  }, [initializeSession]);
 
   // Handler für die Auswahl einer Sitzung
   const handleSessionSelect = (sessionId: string) => {
-    setCurrentSessionId(sessionId);
+    setSessionId(sessionId);
+    resetSelection(); // Zurücksetzen der HTML-Dateiauswahl bei Sitzungswechsel
   };
   
-  // TODO: BACKEND-INTEGRATION - Diese Funktion sollte implementiert werden, um
-  // die Sitzung im Backend zu aktualisieren, wenn neue Nachrichten hinzugefügt werden.
-  const handleSessionUpdate = () => {
-    // Beispiel: await updateSession(currentSessionId, { ... });
-    console.log('Session aktualisiert:', currentSessionId);
+  // Handler für die Auswahl einer HTML-Datei
+  const handleHtmlFileSelect = (fileName: string, outputFolder: string, sessionId: string) => {
+    setSessionId(sessionId);
+    selectFile(fileName, outputFolder);
   };
 
   return (
     <div className="flex h-screen bg-gray-50">
       {/* Sidebar */}
       <Sidebar 
-        currentSessionId={currentSessionId} 
-        onSessionSelect={handleSessionSelect} 
+        currentSessionId={sessionId} 
+        onSessionSelect={handleSessionSelect}
+        onHtmlFileSelect={handleHtmlFileSelect}
+        sessions={sessions}
+        isLoading={isLoading}
       />
 
       {/* Hauptinhalt */}
@@ -61,10 +55,11 @@ export default function Home() {
         
         <main className="flex-1 p-4 overflow-auto">
           <div className="w-full h-full">
-            {currentSessionId ? (
+            {sessionId ? (
               <ChatContainer 
-                currentSessionId={currentSessionId}
-                onSessionUpdate={handleSessionUpdate}
+                currentSessionId={sessionId}
+                onSessionUpdate={updateSession}
+                selectedHtmlFile={selectedFile}
               />
             ) : (
               <div className="flex items-center justify-center h-full">

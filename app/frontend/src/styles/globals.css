@@ -31,4 +31,36 @@ body {
     rgb(var(--background-start-rgb));
   min-height: 100vh;
   font-family: Arial, Helvetica, sans-serif;
+}
+
+/* Benutzerdefinierte Animationen */
+@keyframes slideDown {
+  0% {
+    max-height: 0;
+    opacity: 0;
+  }
+  100% {
+    max-height: 24rem;
+    opacity: 1;
+  }
+}
+
+@keyframes highlight {
+  0% {
+    background-color: rgba(59, 130, 246, 0.2);
+  }
+  50% {
+    background-color: rgba(59, 130, 246, 0.3);
+  }
+  100% {
+    background-color: transparent;
+  }
+}
+
+.animate-highlight {
+  animation: highlight 2s ease-in-out;
+}
+
+.animate-slide-down {
+  animation: slideDown 0.3s ease-out;
 } 

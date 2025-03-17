@@ -90,6 +90,26 @@ module.exports = {
         '2': '8px',
         '3': '12px',
         '4': '16px',
+      },
+
+      fontFamily: {
+        gilroy: ['Gilroy', 'sans-serif'],
+      },
+
+      keyframes: {
+        highlight: {
+          '0%': { backgroundColor: 'rgba(156, 163, 175, 0.2)' },
+          '50%': { backgroundColor: 'rgba(156, 163, 175, 0.3)' },
+          '100%': { backgroundColor: 'transparent' }
+        },
+        slideDown: {
+          '0%': { maxHeight: '0', opacity: '0' },
+          '100%': { maxHeight: '24rem', opacity: '1' }
+        }
+      },
+      animation: {
+        highlight: 'highlight 2s ease-in-out',
+        slideDown: 'slideDown 0.3s ease-out'
       }
     }
   },
