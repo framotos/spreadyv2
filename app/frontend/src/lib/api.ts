@@ -1,9 +1,29 @@
 import axios from 'axios';
-import { AskRequest, AskResponse, Session, BackendSession, BackendMessage, Message } from '@/lib/types';
+import { AskRequest, AskResponse, Session, BackendSession, Message } from '@/lib/types';
 import { generateUUID } from '@/lib/utils';
+
+// Backend-Message-Interface
+interface BackendMessage {
+  id: string;
+  content: string;
+  sender: 'user' | 'assistant';
+  timestamp: string;
+  html_files?: string[];
+  output_folder?: string;
+}
 
 // Korrigiere die API-Basis-URL, um sicherzustellen, dass sie korrekt ist
 const API_BASE_URL = 'http://localhost:8000';
+
+// Caching-Mechanismus für Sessions
+let sessionsCache: Session[] | null = null;
+let sessionsCacheTime: number = 0;
+const CACHE_EXPIRY_MS = 5000; // 5 Sekunden Cache-Gültigkeit
+
+// Cache Invalidierung
+const invalidateCache = () => {
+  sessionsCache = null;
+};
 
 // Speicher für Mock-Daten
 const mockSessionsData: Session[] = [
@@ -54,6 +74,9 @@ const updateSession = async (
       outputFolder: response.data.output_folder || outputFolder
     };
     
+    // Cache invalidieren, damit beim nächsten Aufruf neue Daten geladen werden
+    invalidateCache();
+    
     return updatedSession;
   } catch (error) {
     console.error('Fehler beim Aktualisieren der Session:', error);
@@ -71,8 +94,6 @@ const updateSession = async (
       };
       
       mockSessionsData[sessionIndex] = updatedSession;
-      
-      console.log('Session aktualisiert (Mock, da API-Fehler):', updatedSession);
     } else {
       // Füge eine neue Session hinzu, falls sie noch nicht existiert
       updatedSession = {
@@ -84,34 +105,46 @@ const updateSession = async (
       };
       
       mockSessionsData.unshift(updatedSession);
-      
-      console.log('Neue Session erstellt (Mock, da API-Fehler):', updatedSession);
     }
     
     return updatedSession;
   }
 };
 
-// Funktion zum Senden einer Frage an den Agenten
+// Neue Funktion zum Laden der Nachrichten einer Session
+export const getSessionMessages = async (sessionId: string): Promise<Message[]> => {
+  try {
+    const response = await axios.get<BackendMessage[]>(`${API_BASE_URL}/sessions/${sessionId}/messages`);
+    
+    // Transformiere die Daten in das erwartete Format
+    return response.data.map(msg => ({
+      id: msg.id,
+      content: msg.content,
+      sender: msg.sender,
+      htmlFiles: msg.html_files || [],
+      outputFolder: msg.output_folder
+    }));
+  } catch (error) {
+    console.error(`Fehler beim Abrufen der Nachrichten für Sitzung ${sessionId}:`, error);
+    // Im Fehlerfall einfach eine leere Liste zurückgeben
+    return [];
+  }
+};
+
+// Aktualisiere die askQuestion-Funktion
 export const askQuestion = async (sessionId: string, question: string): Promise<{message: Message, updatedSession: Session}> => {
   try {
-    // TODO: BACKEND-INTEGRATION - Diese Funktion sollte erweitert werden, um zusätzliche Parameter
-    // wie datasetType und years zu unterstützen, sobald das Backend diese Parameter verarbeiten kann.
-    const request: AskRequest = {
-      session_id: sessionId,
-      question: question
-    };
+    // Speichere zuerst die Benutzernachricht im Backend
+    await axios.post<BackendMessage>(`${API_BASE_URL}/sessions/${sessionId}/messages`, {
+      content: question,
+      sender: 'user'
+    });
     
+    // Sende dann die Anfrage an das Backend
+    const request: AskRequest = { session_id: sessionId, question: question };
     const response = await axios.post<AskResponse>(`${API_BASE_URL}/ask`, request);
     
-    // Aktualisiere die Session mit den neuen HTML-Dateien
-    const updatedSession = await updateSession(
-      sessionId, 
-      response.data.html_files, 
-      response.data.output_folder,
-      question
-    );
-    
+    // Transformiere für das Frontend (das Backend speichert die Nachricht bereits)
     const message = {
       id: generateUUID(),
       content: response.data.answer,
@@ -120,24 +153,32 @@ export const askQuestion = async (sessionId: string, question: string): Promise<
       outputFolder: response.data.output_folder
     };
     
-    return {
-      message,
-      updatedSession
-    };
+    // Session-Update
+    const updatedSession = await updateSession(
+      sessionId, 
+      response.data.html_files, 
+      response.data.output_folder,
+      question
+    );
+    
+    return { message, updatedSession };
   } catch (error) {
     console.error('Fehler beim Senden der Frage:', error);
     throw error;
   }
 };
 
-// Funktion zum Abrufen aller Sitzungen
+// Funktion zum Abrufen aller Sitzungen (mit Caching)
 export const getSessions = async (): Promise<Session[]> => {
+  // Überprüfe, ob der Cache noch gültig ist
+  const now = Date.now();
+  if (sessionsCache && now - sessionsCacheTime < CACHE_EXPIRY_MS) {
+    return sessionsCache;
+  }
+  
   try {
-    console.log('API: Versuche Sessions vom Backend abzurufen...');
     // Versuche, die Sessions vom Backend abzurufen
     const response = await axios.get<BackendSession[]>(`${API_BASE_URL}/sessions`);
-    
-    console.log('API: Sessions erfolgreich abgerufen, Rohdaten:', response.data);
     
     // Transformiere die Daten in das erwartete Format
     const transformedSessions = response.data.map((session: BackendSession) => ({
@@ -148,28 +189,16 @@ export const getSessions = async (): Promise<Session[]> => {
       outputFolder: session.output_folder
     }));
     
-    console.log('API: Transformierte Sessions:', transformedSessions);
+    // Aktualisiere den Cache
+    sessionsCache = transformedSessions;
+    sessionsCacheTime = now;
+    
     return transformedSessions;
   } catch (error) {
-    console.error('API: Fehler beim Abrufen der Sitzungen:', error);
+    console.error('Fehler beim Abrufen der Sitzungen:', error);
     
     // Für Entwicklungszwecke: Gib Beispieldaten zurück, wenn der API-Aufruf fehlschlägt
-    console.log('API: Verwende Mock-Daten für Sitzungen');
     return getMockSessions();
-  }
-};
-
-// Funktion zum Abrufen der Nachrichten einer bestimmten Sitzung
-export const getSessionMessages = async (sessionId: string): Promise<BackendMessage[]> => {
-  try {
-    // TODO: BACKEND-INTEGRATION - Diese Funktion versucht, Nachrichten vom Backend abzurufen,
-    // aber der Endpunkt /sessions/:id/messages existiert noch nicht.
-    const response = await axios.get<BackendMessage[]>(`${API_BASE_URL}/sessions/${sessionId}/messages`);
-    return response.data;
-  } catch (error) {
-    console.error(`Fehler beim Abrufen der Nachrichten für Sitzung ${sessionId}:`, error);
-    // Für Entwicklungszwecke: Gib leere Liste zurück, wenn der API-Aufruf fehlschlägt
-    return [];
   }
 };
 
@@ -177,10 +206,12 @@ export const getSessionMessages = async (sessionId: string): Promise<BackendMess
 export const createSession = async (sessionId: string): Promise<Session> => {
   try {
     // Versuche, eine neue Session zu erstellen oder zu aktualisieren
+    const outputFolder = `user_question_output_${sessionId.substring(0, 4)}`;
+    
     const updatedSession = await updateSession(
       sessionId,
       [],  // Keine HTML-Dateien zu Beginn
-      `user_question_output_${sessionId.substring(0, 4)}`,
+      outputFolder,
       'Neue Konversation'
     );
     

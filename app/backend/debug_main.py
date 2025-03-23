@@ -46,6 +46,7 @@ logger.info(f"API Key (first 5 chars): {GEMNINI_APIKEY[:5] if GEMNINI_APIKEY els
 # Speichern von Sitzungsinformationen
 user_agents = {}
 sessions = {}  # Speichert Sitzungsinformationen: ID, letzter Zeitstempel, HTML-Dateien, Ausgabeordner
+session_messages = {}  # Speichert alle Nachrichten pro Session-ID
 
 BALANCE_DATASET_FILENAME = "balance_data_2020_2023.csv"
 INCOME_DATASET_FILENAME = "income_data_2020_2023.csv"
@@ -68,6 +69,21 @@ class BackendSession(BaseModel):
     id: str
     last_message: Optional[str] = None
     timestamp: Optional[str] = None
+    html_files: Optional[List[str]] = None
+    output_folder: Optional[str] = None
+
+# Neue Modelle für die Nachrichtenverwaltung
+class Message(BaseModel):
+    id: str
+    content: str
+    sender: str  # 'user' oder 'assistant'
+    timestamp: str
+    html_files: Optional[List[str]] = None
+    output_folder: Optional[str] = None
+
+class AddMessageRequest(BaseModel):
+    content: str
+    sender: str
     html_files: Optional[List[str]] = None
     output_folder: Optional[str] = None
 
@@ -250,6 +266,57 @@ def get_sessions():
         for session_id, session_data in sessions.items()
     ]
 
+@app.get("/sessions/{session_id}/messages")
+def get_session_messages(session_id: str):
+    """
+    Gibt alle Nachrichten einer Session zurück.
+    """
+    logger.info(f"GET /sessions/{session_id}/messages endpoint called")
+    
+    if session_id not in session_messages:
+        # Falls es noch keine Nachrichten gibt, initialisiere mit Willkommensnachricht
+        session_messages[session_id] = [{
+            "id": str(uuid.uuid4()),
+            "content": "Hallo! Ich bin dein Finanzanalyst. Wie kann ich dir heute helfen?",
+            "sender": "assistant",
+            "timestamp": datetime.datetime.now().isoformat(),
+            "html_files": [],
+            "output_folder": sessions.get(session_id, {}).get("output_folder", "")
+        }]
+    
+    return session_messages[session_id]
+
+@app.post("/sessions/{session_id}/messages")
+def add_session_message(session_id: str, message: AddMessageRequest):
+    """
+    Fügt eine neue Nachricht zu einer Session hinzu.
+    """
+    logger.info(f"POST /sessions/{session_id}/messages endpoint called")
+    
+    # Initialisiere die Nachrichtenliste, falls sie noch nicht existiert
+    if session_id not in session_messages:
+        session_messages[session_id] = []
+    
+    # Erstelle die neue Nachricht
+    new_message = {
+        "id": str(uuid.uuid4()),
+        "content": message.content,
+        "sender": message.sender,
+        "timestamp": datetime.datetime.now().isoformat(),
+        "html_files": message.html_files or [],
+        "output_folder": message.output_folder or sessions.get(session_id, {}).get("output_folder", "")
+    }
+    
+    # Füge die Nachricht hinzu
+    session_messages[session_id].append(new_message)
+    
+    # Aktualisiere die letzte Nachricht in der Session, falls es eine Benutzernachricht ist
+    if message.sender == "user" and session_id in sessions:
+        sessions[session_id]["last_message"] = message.content
+        sessions[session_id]["timestamp"] = new_message["timestamp"]
+    
+    return new_message
+
 class UpdateSessionRequest(BaseModel):
     last_message: Optional[str] = None
     html_files: Optional[List[str]] = None
@@ -349,6 +416,21 @@ def ask_question(payload: AskRequest):
 
         output_folder_name = os.path.basename(output_directory)
         logger.info(f"Returning response with output folder: {output_folder_name}")
+
+        # Speichere die Assistentenantwort als Nachricht
+        logger.info(f"Saving assistant message to session {session_id}")
+        if session_id not in session_messages:
+            session_messages[session_id] = []
+            
+        new_message = {
+            "id": str(uuid.uuid4()),
+            "content": response_text,
+            "sender": "assistant",
+            "timestamp": datetime.datetime.now().isoformat(),
+            "html_files": html_files,
+            "output_folder": output_folder_name
+        }
+        session_messages[session_id].append(new_message)
 
         # Sitzungsinformationen werden jetzt über den /sessions/{session_id} Endpunkt aktualisiert
         # Die Frontend-Komponente wird die Session aktualisieren, nachdem sie die Antwort erhalten hat

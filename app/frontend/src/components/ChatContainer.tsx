@@ -1,98 +1,57 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { askQuestion } from '@/lib/api';
-import { DatasetType, Message, ChatContainerProps } from '@/lib/types';
+import { ChatContainerProps } from '@/lib/types';
 import ChatInput from './ChatInput';
 import ChatMessage from './ChatMessage';
-import { generateUUID } from '@/lib/utils';
+import { useSessionMessages } from '@/lib/hooks/useSessionMessages';
 
 const ChatContainer: React.FC<ChatContainerProps> = ({ 
   currentSessionId, 
   onSessionUpdate,
   selectedHtmlFile = null
 }) => {
-  const [messages, setMessages] = useState<Message[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
+  const { messages, isLoading: isLoadingMessages, addLocalMessage, loadMessages } = useSessionMessages(currentSessionId);
+  const [isProcessing, setIsProcessing] = useState<boolean>(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-
-  // Lade Willkommensnachricht beim ersten Laden
-  useEffect(() => {
-    if (messages.length === 0 && !selectedHtmlFile) {
-      setMessages([
-        {
-          id: generateUUID(),
-          content: 'Hallo! Ich bin dein Finanzanalyst. Wie kann ich dir heute helfen?',
-          sender: 'assistant'
-        }
-      ]);
-    }
-  }, [messages.length, selectedHtmlFile]);
 
   // Scrolle zum Ende der Nachrichten, wenn neue Nachrichten hinzugefügt werden
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  // Lade Nachrichten, wenn sich die Session-ID ändert
-  useEffect(() => {
-    // TODO: BACKEND-INTEGRATION - Hier sollten die Nachrichten für die aktuelle Sitzung
-    // vom Backend abgerufen werden, sobald der entsprechende Endpunkt implementiert ist.
-    // Beispiel: const messages = await getSessionMessages(currentSessionId);
-    
-    console.log("Session ID geändert:", currentSessionId);
-    
-    // Für jetzt setzen wir nur die Willkommensnachricht zurück
-    if (!selectedHtmlFile) {
-      setMessages([
-        {
-          id: generateUUID(),
-          content: 'Hallo! Ich bin dein Finanzanalyst. Wie kann ich dir heute helfen?',
-          sender: 'assistant'
-        }
-      ]);
+  // Handler zum Senden von Nachrichten
+  const handleSendMessage = async (message: string) => {
+    if (!message.trim() || isProcessing) {
+      return;
     }
-  }, [currentSessionId, selectedHtmlFile]);
-
-  const handleSendMessage = async (message: string, datasetType: DatasetType, years: number[]) => {
-    if (!message.trim() || isLoading) return;
-
-    // Füge die Benutzernachricht hinzu
-    const userMessageId = generateUUID();
-    const userMessage: Message = {
-      id: userMessageId,
-      content: message,
-      sender: 'user'
-    };
     
-    setMessages(prev => [...prev, userMessage]);
-    setIsLoading(true);
+    // Zeige sofort die Benutzernachricht an, bevor der Server antwortet
+    addLocalMessage(message, 'user');
+    
+    // Frontend-State für den Lade-Indikator setzen
+    setIsProcessing(true);
 
     try {
-      console.log("Sende Nachricht:", message, "an Session:", currentSessionId);
-      console.log("Zusätzliche Parameter (für spätere Backend-Integration):", { datasetType, years });
-      
-      // Sende die Anfrage an den Server mit der neuen API-Funktion
+      // Sende die Anfrage an den Server (die Benutzernachricht wird in der API-Funktion hinzugefügt)
       const response = await askQuestion(currentSessionId, message);
       
-      console.log("Antwort erhalten:", response);
+      // Aktualisiere die Session
+      if (currentSessionId === response.updatedSession.id) {
+        onSessionUpdate(response.updatedSession);
+      }
       
-      // Füge die Antwort des Assistenten hinzu
-      setMessages(prev => [...prev, response.message]);
-      
-      // Benachrichtige die übergeordnete Komponente über die Aktualisierung mit der aktualisierten Session
-      onSessionUpdate(response.updatedSession);
+      // Lade alle Nachrichten neu, um sicherzustellen, dass der State korrekt ist
+      await loadMessages();
     } catch (error) {
       console.error('Fehler beim Senden der Nachricht:', error);
       
-      // Füge eine Fehlermeldung hinzu
-      const errorMessage: Message = {
-        id: generateUUID(),
-        content: 'Es ist ein Fehler aufgetreten. Bitte versuche es später noch einmal.',
-        sender: 'assistant'
-      };
-      
-      setMessages(prev => [...prev, errorMessage]);
+      // Füge eine Fehlermeldung lokal hinzu
+      addLocalMessage(
+        'Es ist ein Fehler aufgetreten. Bitte versuche es später noch einmal.',
+        'assistant'
+      );
     } finally {
-      setIsLoading(false);
+      setIsProcessing(false);
     }
   };
 
@@ -128,7 +87,7 @@ const ChatContainer: React.FC<ChatContainerProps> = ({
         ))}
         
         {/* Ladeindikator */}
-        {isLoading && (
+        {isProcessing && (
           <div className="flex justify-start">
             <div className="bg-gray-100 p-3 rounded-lg">
               <div className="flex space-x-2">
@@ -145,7 +104,7 @@ const ChatContainer: React.FC<ChatContainerProps> = ({
       
       {/* Eingabebereich */}
       <div className="border-t border-gray-200 p-4">
-        <ChatInput onSendMessage={handleSendMessage} isLoading={isLoading} />
+        <ChatInput onSendMessage={handleSendMessage} isLoading={isLoadingMessages || isProcessing} />
       </div>
     </div>
   );

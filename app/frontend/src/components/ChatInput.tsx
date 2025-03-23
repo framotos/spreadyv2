@@ -3,18 +3,14 @@ import { ChatInputProps } from '@/lib/types';
 
 const ChatInput: React.FC<ChatInputProps> = ({ onSendMessage, isLoading}) => {
     const [message, setMessage] = useState('');
-    // Diese States werden nicht mehr verwendet, kommentieren wir sie vorerst aus
-    // Wir entfernen sie nicht vollständig, falls sie in Zukunft wieder benötigt werden
-    // const [datasetType, setDatasetType] = useState<DatasetType | null>(null);
-    // const [selectedYears, setSelectedYears] = useState<number[]>([2019, 2020, 2021, 2022, 2023]);
+    // Diese States wurden entfernt, da sie nicht mehr verwendet werden
 
     const handleSubmit = (e: FormEvent) => {
         e.preventDefault();
 
         if (message.trim() || !isLoading) {
-            // Da datasetType und selectedYears nicht mehr aktiv verwendet werden,
-            // übergeben wir Standardwerte
-            onSendMessage(message, null, [2019, 2020, 2021, 2022, 2023]);
+            // Rufe onSendMessage nur mit dem message-Parameter auf
+            onSendMessage(message);
             setMessage('');
         }
     };

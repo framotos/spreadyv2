@@ -91,6 +91,6 @@ export interface NavbarItemProps {
 }
 
 export interface ChatInputProps {
-  onSendMessage: (message: string, datasetType: DatasetType, years: number[]) => void;
+  onSendMessage: (message: string) => void;
   isLoading: boolean;
 } 

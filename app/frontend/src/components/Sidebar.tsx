@@ -26,7 +26,6 @@ const Sidebar: React.FC<SidebarProps> = ({
       
       // Erstelle eine neue Session über die API
       await createSession(newSessionId);
-      console.log("Neue Session erstellt mit ID:", newSessionId);
       
       // Wechsle zur neuen Session
       onSessionSelect(newSessionId);
@@ -39,9 +38,6 @@ const Sidebar: React.FC<SidebarProps> = ({
       setError('Neuer Chat konnte nicht erstellt werden');
     }
   };
-
-  // Debug-Ausgabe für Sessions
-  console.log("Sessions in Sidebar:", sessions);
 
   // Handler für die Auswahl einer HTML-Datei
   const handleHtmlFileSelect = (fileName: string, outputFolder: string, sessionId: string) => {
