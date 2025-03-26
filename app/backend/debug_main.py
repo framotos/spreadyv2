@@ -48,8 +48,10 @@ user_agents = {}
 sessions = {}  # Speichert Sitzungsinformationen: ID, letzter Zeitstempel, HTML-Dateien, Ausgabeordner
 session_messages = {}  # Speichert alle Nachrichten pro Session-ID
 
-BALANCE_DATASET_FILENAME = "balance_data_2020_2023.csv"
-INCOME_DATASET_FILENAME = "income_data_2020_2023.csv"
+# Add new filenames
+BALANCE_INFO_FILENAME = "balance_companies_info.csv"
+INCOME_INFO_FILENAME = "income_companies_info.csv"
+BALANCE_INCOME_INFO_FILENAME = "balance_income_companies_info.csv" # New default
 
 
 class AskRequest(BaseModel):
@@ -128,6 +130,7 @@ def get_or_create_agent_for_session(session_id: str) -> CodeAgent:
                 tools=[],  # Tools can be added as needed
                 model=model,
                 additional_authorized_imports=["pandas", "plotly", "numpy"],
+                # system_prompt=SYSTEM_PROMPT,
                 prompt_templates=prompt_templates,
                 verbosity_level=1
             )
@@ -155,45 +158,53 @@ def get_or_create_agent_for_session(session_id: str) -> CodeAgent:
 def run_agent_in_directory(
     agent: CodeAgent,
     user_question: str,
-    dataset_type: Optional[str], # Added dataset_type
-    years: Optional[List[int]],    # Added years
-    session_id: str,  # Session-ID hinzugefügt
-    balance_dataset_filename: str = BALANCE_DATASET_FILENAME,
-    income_dataset_filename: str = INCOME_DATASET_FILENAME,
+    dataset_type: Optional[str], # 'income', 'balance', or None
+    years: Optional[List[int]],
+    session_id: str,
+    # REMOVE old filename defaults from args
+    # balance_dataset_filename: str = BALANCE_DATASET_FILENAME,
+    # income_dataset_filename: str = INCOME_DATASET_FILENAME,
     base_output_dir: str = "user_output"
 ) -> (str, str):
     """
     Runs the agent in a specific directory, copies the dataset,
-    and ensures outputs are saved there.
-    Returns:
-        str: The agent's response (text).
-        str: The path to the output directory where files are saved.
+    and ensures outputs are saved there. Minimal changes for dataset swap.
     """
     try:
         logger.info(f"Running agent with question: {user_question}")
         logger.info(f"Dataset type: {dataset_type}, Years: {years}")
-        
+
         original_working_directory = os.getcwd()
-        
-        # Verwende den Output-Ordner aus der Session, falls vorhanden, oder erstelle einen neuen
+
+        # Keep existing output folder logic (no cleanup)
         if session_id in sessions and "output_folder" in sessions[session_id]:
             output_folder_name = sessions[session_id]["output_folder"]
         else:
-            output_folder_name = f"user_question_output_{session_id[:4]}"
-        
-        output_dir_name = f"{base_output_dir}/{output_folder_name}"
-        output_directory = os.path.join(original_working_directory, output_dir_name)
+            output_folder_name = f"user_question_output_{session_id[:4]}" # Still uses [:4]
+
+        output_dir_name_rel = f"{base_output_dir}/{output_folder_name}" # Relative path name part
+        output_directory = os.path.join(original_working_directory, output_dir_name_rel)
         os.makedirs(output_directory, exist_ok=True)
 
-        # Copy dataset file(s) based on dataset_type
+        # --- Select dataset file(s) based on dataset_type using NEW filenames ---
         dataset_filenames_to_copy = []
-        if dataset_type == "income":
-            dataset_filenames_to_copy = [income_dataset_filename]
-        elif dataset_type == "balance":
-            dataset_filenames_to_copy = [balance_dataset_filename]
-        else:
-            dataset_filenames_to_copy = [balance_dataset_filename, income_dataset_filename]
+        dataset_identifier_for_prompt = None # To tell generate_prompt which dataset we ended up using
 
+        if dataset_type == "income": # Now map 'income' to the specific info file
+            dataset_filenames_to_copy = [INCOME_INFO_FILENAME]
+            dataset_identifier_for_prompt = "income_info"
+            logger.info(f"Selected dataset file: {INCOME_INFO_FILENAME}")
+        elif dataset_type == "balance": # Now map 'balance' to the specific info file
+            dataset_filenames_to_copy = [BALANCE_INFO_FILENAME]
+            dataset_identifier_for_prompt = "balance_info"
+            logger.info(f"Selected dataset file: {BALANCE_INFO_FILENAME}")
+        else: # Handles None or any other value - use the new default combined dataset
+            dataset_filenames_to_copy = [BALANCE_INCOME_INFO_FILENAME]
+            dataset_identifier_for_prompt = "balance_income_info"
+            logger.info(f"No specific dataset type requested. Using default: {BALANCE_INCOME_INFO_FILENAME}")
+        # --- END DATASET SELECTION ---
+
+        # Copy selected dataset file(s)
         for filename in dataset_filenames_to_copy:
             dataset_source_path = os.path.join(original_working_directory, "data", filename)
             dataset_destination_path = os.path.join(output_directory, filename)
@@ -202,15 +213,34 @@ def run_agent_in_directory(
                 shutil.copy2(dataset_source_path, dataset_destination_path)
             else:
                 logger.error(f"Dataset file not found: {dataset_source_path}")
-                
-        dataset_description = generate_prompt(dataset_type, years)
+                # Keep simple error handling for now
+                raise FileNotFoundError(f"Required dataset file not found: {filename}")
 
-        prompt = f"""This is the user question: {user_question}\n\n{dataset_description}.\n\nYou can find the dataset in this directory: {output_dir_name}. If you are asked to create any graphs save them via also in your user directory: {output_dir_name} as in fig.write_html("{output_dir_name}/your_name_for_the_graph.html") """
+        # --- Generate dataset description using the identifier ---
+        # Pass the identifier that matches the logic in prompts.py
+        dataset_description = generate_prompt(dataset_identifier_for_prompt, years)
+
+
+        # --- Create the prompt text, informing agent of available file(s) ---
+        # Tell the agent the exact filename(s) it can load
+        copied_filenames_str = ", ".join(f"'{f}'" for f in dataset_filenames_to_copy)
+        # Keep original instruction for saving files for minimal change, though relative is better
+        prompt = f"""This is the user question: {user_question}
+
+{dataset_description}
+
+You can find the dataset file(s) {copied_filenames_str} in the current working directory: '{output_dir_name_rel}'. Please load the appropriate file(s) using this path.
+
+If you are asked to create any graphs save them also in your user directory: '{output_dir_name_rel}' like this: `fig.write_html("{output_dir_name_rel}/your_name_for_the_graph.html")`.
+"""
         logger.debug(f"Generated prompt: {prompt}")
+        # --- END PROMPT TEXT ---
+
 
         # Note the `reset=False` so it keeps track of conversation for that session
         logger.info("Running agent with prompt")
         try:
+            # No os.chdir() for minimal change, rely on agent handling the path in prompt
             response_chart = agent.run(prompt, reset=False)
             logger.info(f"Agent response: {response_chart[:100]}...")
         except Exception as e:
@@ -218,7 +248,7 @@ def run_agent_in_directory(
             logger.error(f"Error details: {traceback.format_exc()}")
             raise
 
-        return response_chart, output_directory
+        return response_chart, output_directory # Return full path
     except Exception as e:
         logger.error(f"Error running agent: {str(e)}")
         logger.error(traceback.format_exc())
