@@ -11,7 +11,7 @@ const NavbarItem: React.FC<NavbarItemProps> = ({
   const [hasNewFiles, setHasNewFiles] = useState<boolean>(false);
   const prevHtmlFilesCountRef = useRef<number>(0);
   const fileListRef = useRef<HTMLDivElement>(null);
-
+  
   // Überprüfe, ob neue HTML-Dateien hinzugefügt wurden
   useEffect(() => {
     if (session.htmlFiles.length > prevHtmlFilesCountRef.current) {

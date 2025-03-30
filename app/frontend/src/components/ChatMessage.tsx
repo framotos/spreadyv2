@@ -31,6 +31,12 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message, sessionId }) => {
     }
   };
   
+  // Prüfe, ob diese Nachricht HTML-Dateien hat
+  const hasHtmlFiles = message.sender === 'assistant' && 
+    message.htmlFiles && 
+    message.htmlFiles.length > 0 && 
+    message.outputFolder;
+  
   return (
     <div 
       className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}
@@ -44,12 +50,12 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message, sessionId }) => {
       >
         <p className="whitespace-pre-wrap">{message.content}</p>
         
-        {/* HTML-Dateien anzeigen, falls vorhanden */}
-        {message.htmlFiles && message.htmlFiles.length > 0 && (
+        {/* HTML-Dateien anzeigen, nur wenn diese Nachricht HTML-Dateien besitzt */}
+        {hasHtmlFiles && (
           <div className="mt-2 pt-2 border-t border-gray-200">
             <p className="text-sm font-medium mb-1">Generierte Grafiken:</p>
             <ul className="space-y-1">
-              {message.htmlFiles.map((file, index) => (
+              {message.htmlFiles!.map((file, index) => (
                 <li key={index}>
                   <button 
                     onClick={(e) => handleViewHtml(file, e)}

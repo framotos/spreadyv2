@@ -35,7 +35,8 @@ export function useSessionMessages(sessionId: string | null) {
         content: msg.content,
         sender: msg.sender,
         htmlFiles: msg.html_files || [],
-        outputFolder: msg.output_folder || ''
+        outputFolder: msg.output_folder || '',
+        timestamp: msg.timestamp
       }));
       
       setMessages(transformedMessages);
@@ -72,7 +73,8 @@ export function useSessionMessages(sessionId: string | null) {
         content: response.data.content,
         sender: response.data.sender,
         htmlFiles: response.data.html_files || [],
-        outputFolder: response.data.output_folder || ''
+        outputFolder: response.data.output_folder || '',
+        timestamp: response.data.timestamp
       };
       
       // Aktualisiere den lokalen State
@@ -93,7 +95,8 @@ export function useSessionMessages(sessionId: string | null) {
       content,
       sender,
       htmlFiles,
-      outputFolder
+      outputFolder,
+      timestamp: new Date().toISOString()
     };
     
     setMessages(prev => [...prev, tempMessage]);

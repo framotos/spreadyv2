@@ -50,6 +50,7 @@ export interface Message {
   sender: 'user' | 'assistant';
   htmlFiles?: string[];
   outputFolder?: string;
+  timestamp?: string;
 }
 
 // Legacy-Typen (für Kompatibilität mit bestehendem Code)

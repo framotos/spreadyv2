@@ -435,14 +435,23 @@ def ask_question(payload: AskRequest):
         # Gather any HTML files that got generated
         logger.info(f"Checking for HTML files in {output_directory}")
         if os.path.exists(output_directory) and os.path.isdir(output_directory):
+            # Finde neu erzeugte HTML-Dateien
             html_files = [
                 f for f in os.listdir(output_directory)
                 if f.lower().endswith(".html")
             ]
             logger.info(f"Found HTML files: {html_files}")
+            
+            # Bestimme, welche HTML-Dateien neu sind
+            if session_id in sessions:
+                existing_files = sessions[session_id].get("html_files", [])
+                new_html_files = [f for f in html_files if f not in existing_files]
+            else:
+                new_html_files = html_files
         else:
             logger.warning(f"Output directory not found: {output_directory}")
             html_files = []
+            new_html_files = []
 
         output_folder_name = os.path.basename(output_directory)
         logger.info(f"Returning response with output folder: {output_folder_name}")
@@ -457,20 +466,30 @@ def ask_question(payload: AskRequest):
             "content": response_text,
             "sender": "assistant",
             "timestamp": datetime.datetime.now().isoformat(),
-            "html_files": html_files,
+            "html_files": new_html_files,  # Nur die NEUEN HTML-Dateien dieser Nachricht zuordnen
             "output_folder": output_folder_name
         }
         session_messages[session_id].append(new_message)
 
-        # Sitzungsinformationen werden jetzt über den /sessions/{session_id} Endpunkt aktualisiert
-        # Die Frontend-Komponente wird die Session aktualisieren, nachdem sie die Antwort erhalten hat
+        # Aktualisiere auch die Session mit den HTML-Dateien
+        if session_id in sessions:
+            sessions[session_id]["html_files"] = html_files  # Alle HTML-Dateien für die NavBar
+        else:
+            # Initialisiere die Session, falls sie noch nicht existiert
+            sessions[session_id] = {
+                "id": session_id,
+                "last_message": question,
+                "timestamp": datetime.datetime.now().isoformat(),
+                "html_files": html_files,
+                "output_folder": output_folder_name
+            }
 
         # Gib die aktuell gefundenen HTML-Dateien zurück
         # Die vollständige Liste wird vom Frontend bei Bedarf abgerufen
         response = AskResponse(
             answer=response_text,
             output_folder=output_folder_name,
-            html_files=html_files  # Nur die neuen Dateien zurückgeben
+            html_files=html_files  # Alle HTML-Dateien zurückgeben für die Session-Aktualisierung
         )
         logger.debug(f"Response object: {response}")
         return response
