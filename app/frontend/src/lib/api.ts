@@ -1,3 +1,5 @@
+'use client';
+
 import axios from 'axios';
 import { AskRequest, AskResponse, Session, BackendSession, Message } from '@/lib/types';
 import { generateUUID } from '@/lib/utils';

@@ -1,3 +1,5 @@
+'use client';
+
 import { useLocalStorage } from './useLocalStorage';
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { generateUUID } from '@/lib/utils';

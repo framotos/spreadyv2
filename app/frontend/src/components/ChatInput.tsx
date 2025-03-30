@@ -1,3 +1,5 @@
+'use client';
+
 import React, { useState, FormEvent } from 'react';
 import { ChatInputProps } from '@/lib/types';
 

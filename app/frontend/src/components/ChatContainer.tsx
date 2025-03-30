@@ -1,3 +1,5 @@
+'use client';
+
 import React, { useState, useRef, useEffect } from 'react';
 import { askQuestion } from '@/lib/api';
 import { ChatContainerProps } from '@/lib/types';

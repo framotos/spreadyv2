@@ -1,3 +1,5 @@
+'use client';
+
 /**
  * Utility-Funktionen für die gesamte Anwendung
  */

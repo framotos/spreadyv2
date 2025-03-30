@@ -1,3 +1,5 @@
+'use client';
+
 import React, { useState } from 'react';
 // TODO: BACKEND-INTEGRATION - Der Import von NavbarItem verursacht einen Linter-Fehler.
 // Dies könnte an einem Pfadproblem oder einer fehlenden Datei liegen.
@@ -6,6 +8,7 @@ import NavbarItem from '@/components/NavbarItem';
 import { createSession } from '@/lib/api';
 import { SidebarProps } from '@/lib/types';
 import { generateUUID } from '@/lib/utils';
+import { useAuth } from '@/lib/auth/AuthContext';
 
 const Sidebar: React.FC<SidebarProps> = ({ 
   currentSessionId, 
@@ -15,6 +18,7 @@ const Sidebar: React.FC<SidebarProps> = ({
   isLoading
 }) => {
   const [error, setError] = useState<string | null>(null);
+  const { signOut } = useAuth();
 
   const createNewChat = async () => {
     // TODO: BACKEND-INTEGRATION - Diese Funktion verwendet jetzt createSession(),
@@ -42,6 +46,10 @@ const Sidebar: React.FC<SidebarProps> = ({
   // Handler für die Auswahl einer HTML-Datei
   const handleHtmlFileSelect = (fileName: string, outputFolder: string, sessionId: string) => {
     onHtmlFileSelect(fileName, outputFolder, sessionId);
+  };
+
+  const handleSignOut = async () => {
+    await signOut();
   };
 
   return (
@@ -85,7 +93,18 @@ const Sidebar: React.FC<SidebarProps> = ({
           </div>
         )}
       </div>
-
+      
+      <div className="p-4 border-t border-gray-200">
+        <button 
+          onClick={handleSignOut}
+          className="w-full py-2 px-4 flex items-center justify-center space-x-2 rounded-md text-gray-700 bg-gray-200 hover:bg-gray-300 transition-colors"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+            <path fillRule="evenodd" d="M3 3a1 1 0 00-1 1v12a1 1 0 001 1h12a1 1 0 001-1V4a1 1 0 00-1-1H3zm11 4a1 1 0 10-2 0v4a1 1 0 102 0V7zm-8 1a1 1 0 00-1 1v2a1 1 0 001 1h3a1 1 0 100-2H7V9a1 1 0 00-1-1z" clipRule="evenodd" />
+          </svg>
+          <span>Abmelden</span>
+        </button>
+      </div>
     </div>
   );
 };
