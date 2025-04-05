@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Session, HtmlFile } from '@/lib/types';
-import { getSessions } from '@/lib/api';
+import { getSessions } from '@/lib/authenticatedApi';
 import { generateUUID } from '@/lib/utils';
 
 /**

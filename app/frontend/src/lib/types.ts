@@ -17,6 +17,7 @@ export interface AskResponse {
 // Backend-Datentypen
 export interface BackendSession {
   id: string;
+  user_id?: string;
   last_message?: string;
   timestamp?: string;
   html_files?: string[];
@@ -25,6 +26,7 @@ export interface BackendSession {
 
 export interface BackendMessage {
   id: string;
+  user_id?: string;
   content: string;
   timestamp: string;
   sender: 'user' | 'assistant';
@@ -33,6 +35,7 @@ export interface BackendMessage {
 // Frontend-Datentypen
 export interface Session {
   id: string;
+  userId?: string;
   lastMessage: string;
   timestamp: string;
   htmlFiles: string[];
@@ -46,6 +49,7 @@ export interface HtmlFile {
 
 export interface Message {
   id: string;
+  userId?: string;
   content: string;
   sender: 'user' | 'assistant';
   htmlFiles?: string[];

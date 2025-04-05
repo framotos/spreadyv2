@@ -1,112 +1,127 @@
 'use client';
 
-import React, { useState, useRef, useEffect } from 'react';
-import { askQuestion } from '@/lib/api';
-import { ChatContainerProps } from '@/lib/types';
+import React, { useState, useEffect, useRef } from 'react';
+import { ChatContainerProps, Message } from '@/lib/types';
 import ChatInput from './ChatInput';
 import ChatMessage from './ChatMessage';
-import { useSessionMessages } from '@/lib/hooks/useSessionMessages';
+import { getSessionMessages, askQuestion } from '@/lib/authenticatedApi';
+import { useAuth } from '@/lib/auth/AuthContext';
 
+/**
+ * Container-Komponente für den Chat-Bereich
+ */
 const ChatContainer: React.FC<ChatContainerProps> = ({ 
   currentSessionId, 
   onSessionUpdate,
-  selectedHtmlFile = null
+  selectedHtmlFile 
 }) => {
-  const { messages, isLoading: isLoadingMessages, addLocalMessage, loadMessages } = useSessionMessages(currentSessionId);
-  const [isProcessing, setIsProcessing] = useState<boolean>(false);
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const { user } = useAuth();
 
-  // Scrolle zum Ende der Nachrichten, wenn neue Nachrichten hinzugefügt werden
+  // Nachrichten laden, wenn die Session sich ändert
+  useEffect(() => {
+    const fetchMessages = async () => {
+      if (!currentSessionId || !user) return;
+      
+      try {
+        const fetchedMessages = await getSessionMessages(currentSessionId);
+        setMessages(fetchedMessages);
+      } catch (error) {
+        console.error('Fehler beim Laden der Nachrichten:', error);
+      }
+    };
+    
+    fetchMessages();
+  }, [currentSessionId, user]);
+
+  // Nachrichtenbereich scrollen, wenn neue Nachrichten eintreffen
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  // Handler zum Senden von Nachrichten
-  const handleSendMessage = async (message: string) => {
-    if (!message.trim() || isProcessing) {
-      return;
-    }
-    
-    // Zeige sofort die Benutzernachricht an, bevor der Server antwortet
-    addLocalMessage(message, 'user');
-    
-    // Frontend-State für den Lade-Indikator setzen
-    setIsProcessing(true);
-
-    try {
-      // Sende die Anfrage an den Server (die Benutzernachricht wird in der API-Funktion hinzugefügt)
-      const response = await askQuestion(currentSessionId, message);
-      
-      // Aktualisiere die Session
-      if (currentSessionId === response.updatedSession.id) {
-        onSessionUpdate(response.updatedSession);
+  // Ausgewählte HTML-Datei anzeigen
+  useEffect(() => {
+    if (selectedHtmlFile) {
+      const iframeContainer = document.getElementById('iframe-container');
+      if (iframeContainer) {
+        iframeContainer.innerHTML = ''; // Leere den Container
+        
+        const iframe = document.createElement('iframe');
+        iframe.src = `/user_output/${selectedHtmlFile.outputFolder}/${selectedHtmlFile.fileName}`;
+        iframe.className = 'w-full h-full border-0';
+        iframe.title = selectedHtmlFile.fileName;
+        
+        iframeContainer.appendChild(iframe);
       }
+    }
+  }, [selectedHtmlFile]);
+
+  // Nachricht senden
+  const handleSendMessage = async (message: string) => {
+    if (!message.trim() || !currentSessionId || !user) return;
+    
+    // Optimistisches Update der UI
+    const userMessage: Message = {
+      id: Date.now().toString(),
+      content: message,
+      sender: 'user'
+    };
+    
+    setMessages(prev => [...prev, userMessage]);
+    setIsLoading(true);
+    
+    try {
+      // Anfrage an das Backend senden
+      const { message: assistantMessage, updatedSession } = await askQuestion(currentSessionId, message);
       
-      // Lade alle Nachrichten neu, um sicherzustellen, dass der State korrekt ist
-      await loadMessages();
+      // Antwort hinzufügen
+      setMessages(prev => [...prev, assistantMessage]);
+      
+      // Session aktualisieren
+      if (updatedSession) {
+        onSessionUpdate(updatedSession);
+      }
     } catch (error) {
       console.error('Fehler beim Senden der Nachricht:', error);
-      
-      // Füge eine Fehlermeldung lokal hinzu
-      addLocalMessage(
-        'Es ist ein Fehler aufgetreten. Bitte versuche es später noch einmal.',
-        'assistant'
-      );
+      // Fehlerbehandlung hier...
     } finally {
-      setIsProcessing(false);
+      setIsLoading(false);
     }
   };
 
-  // Wenn eine HTML-Datei direkt angezeigt werden soll
-  if (selectedHtmlFile) {
-    return (
-      <div className="flex flex-col h-full bg-white rounded-lg shadow overflow-hidden">
-        <div className="p-4 border-b border-gray-200">
-          <h2 className="text-lg font-medium">{selectedHtmlFile.fileName}</h2>
-          <p className="text-sm text-gray-500">Aus Session: {currentSessionId}</p>
-        </div>
-        <div className="flex-1 p-0">
-          <iframe 
-            src={`http://localhost:8000/user_output/${selectedHtmlFile.outputFolder}/${selectedHtmlFile.fileName}`}
-            className="w-full h-full border-0"
-            title={selectedHtmlFile.fileName}
-          />
-        </div>
-      </div>
-    );
-  }
-
   return (
-    <div className="flex flex-col h-full bg-white rounded-lg shadow overflow-hidden">
-      {/* Nachrichtenbereich */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-4">
-        {messages.map((msg) => (
-          <ChatMessage 
-            key={msg.id}
-            message={msg}
-            sessionId={currentSessionId}
-          />
-        ))}
-        
-        {/* Ladeindikator */}
-        {isProcessing && (
-          <div className="flex justify-start">
-            <div className="bg-gray-100 p-3 rounded-lg">
-              <div className="flex space-x-2">
-                <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"></div>
-                <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
-                <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.4s' }}></div>
-              </div>
-            </div>
+    <div className="flex flex-col h-full">
+      {/* Nachrichten */}
+      <div className="flex-1 overflow-auto p-4">
+        {messages.length > 0 ? (
+          <div className="space-y-4">
+            {messages.map((msg) => (
+              <ChatMessage
+                key={msg.id}
+                message={msg}
+              />
+            ))}
+            <div ref={messagesEndRef} />
+          </div>
+        ) : (
+          <div className="flex items-center justify-center h-full text-gray-500">
+            <p>Keine Nachrichten in dieser Sitzung. Starte eine Konversation!</p>
           </div>
         )}
-        
-        <div ref={messagesEndRef} />
       </div>
       
-      {/* Eingabebereich */}
+      {/* HTML-Visualisierung */}
+      {selectedHtmlFile && (
+        <div className="flex-1 border-t border-gray-200">
+          <div id="iframe-container" className="w-full h-full"></div>
+        </div>
+      )}
+      
+      {/* Eingabefeld */}
       <div className="border-t border-gray-200 p-4">
-        <ChatInput onSendMessage={handleSendMessage} isLoading={isLoadingMessages || isProcessing} />
+        <ChatInput onSendMessage={handleSendMessage} isLoading={isLoading} />
       </div>
     </div>
   );

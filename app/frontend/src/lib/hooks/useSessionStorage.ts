@@ -4,7 +4,7 @@ import { useLocalStorage } from './useLocalStorage';
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { generateUUID } from '@/lib/utils';
 import { Session } from '@/lib/types';
-import { getSessions } from '@/lib/api';
+import { getSessions } from '@/lib/authenticatedApi';
 
 /**
  * Custom Hook zur Verwaltung der Session-ID und Sessions im localStorage.

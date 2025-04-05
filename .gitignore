@@ -1,4 +1,16 @@
-.vscode/
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Cursor rules
+.cursor/rules/
+
 __pycache__/
 env_agent_analytics/
 app/backend/user_output/*
@@ -17,5 +29,4 @@ app/frontend/node_modules/
 app/frontend/.next/
 
 # Betriebssystem-Dateien
-.DS_Store
 **/.DS_Store

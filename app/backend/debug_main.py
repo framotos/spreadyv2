@@ -4,11 +4,11 @@ import shutil
 import traceback
 import logging
 import datetime
-from typing import List, Optional, Dict
+from typing import List, Optional, Dict, Any
 
 import pandas as pd
 import plotly.express as px
-from fastapi import FastAPI, Body, Request
+from fastapi import FastAPI, Body, Request, Depends, HTTPException, status
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -21,6 +21,9 @@ from smolagents.agents import PlanningPromptTemplate, ManagedAgentPromptTemplate
 from prompts import generate_prompt, SYSTEM_PROMPT
 
 from dotenv import load_dotenv
+
+# Importiere Authentifizierungskomponenten
+from auth import User, get_current_user, get_optional_user
 
 # Konfiguriere Logging
 logging.basicConfig(
@@ -69,6 +72,7 @@ class AskResponse(BaseModel):
 
 class BackendSession(BaseModel):
     id: str
+    user_id: Optional[str] = None  # Neue Feld für die Benutzer-ID
     last_message: Optional[str] = None
     timestamp: Optional[str] = None
     html_files: Optional[List[str]] = None
@@ -77,6 +81,7 @@ class BackendSession(BaseModel):
 # Neue Modelle für die Nachrichtenverwaltung
 class Message(BaseModel):
     id: str
+    user_id: Optional[str] = None  # Neue Feld für die Benutzer-ID
     content: str
     sender: str  # 'user' oder 'assistant'
     timestamp: str
@@ -86,11 +91,12 @@ class Message(BaseModel):
 class AddMessageRequest(BaseModel):
     content: str
     sender: str
+    user_id: Optional[str] = None  # Neue Feld für die Benutzer-ID
     html_files: Optional[List[str]] = None
     output_folder: Optional[str] = None
 
 # Create a helper to ensure each session has its own agent
-def get_or_create_agent_for_session(session_id: str) -> CodeAgent:
+def get_or_create_agent_for_session(session_id: str, user_id: Optional[str] = None) -> CodeAgent:
     """
     Returns the CodeAgent associated with session_id.
     If none exists, it creates a new agent instance and stores it.
@@ -143,6 +149,7 @@ def get_or_create_agent_for_session(session_id: str) -> CodeAgent:
                 output_dir_name = f"user_question_output_{session_id[:4]}"
                 sessions[session_id] = {
                     "id": session_id,
+                    "user_id": user_id,  # Setze die Benutzer-ID bei der Erstellung
                     "last_message": "Neue Konversation",
                     "timestamp": datetime.datetime.now().isoformat(),
                     "html_files": [],
@@ -267,6 +274,21 @@ async def global_exception_handler(request: Request, exc: Exception):
         content={"detail": str(exc)},
     )
 
+# Exception Handler für Authentifizierungsfehler
+@app.exception_handler(HTTPException)
+async def http_exception_handler(request: Request, exc: HTTPException):
+    if exc.status_code == status.HTTP_401_UNAUTHORIZED:
+        logger.warning(f"Authentifizierungsfehler: {exc.detail}")
+        return JSONResponse(
+            status_code=exc.status_code,
+            content={"detail": exc.detail},
+            headers={"WWW-Authenticate": "Bearer"}
+        )
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={"detail": exc.detail}
+    )
+
 # Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
@@ -279,73 +301,115 @@ app.add_middleware(
 # Mount the user_output directory as static so HTML files can be served directly
 app.mount("/user_output", StaticFiles(directory="user_output"), name="user_output")
 
+# Öffentlicher Health-Check-Endpunkt (keine Authentifizierung erforderlich)
+@app.get("/health")
+async def health_check():
+    """
+    Einfacher Health-Check-Endpunkt, der keine Authentifizierung erfordert.
+    """
+    return {
+        "status": "ok",
+        "timestamp": datetime.datetime.now().isoformat(),
+        "version": "1.0.0"
+    }
+
 @app.get("/sessions")
-def get_sessions():
+async def get_sessions(current_user: User = Depends(get_current_user)):
     """
-    Returns a list of all sessions.
+    Returns a list of all sessions for the authenticated user.
     """
-    logger.info("GET /sessions endpoint called")
-    return [
+    logger.info(f"GET /sessions endpoint called for user {current_user.id}")
+    
+    # Filtere Sitzungen nach Benutzer-ID
+    user_sessions = [
         BackendSession(
             id=session_id,
+            user_id=session_data.get("user_id"),
             last_message=session_data.get("last_message", "Neue Konversation"),
             timestamp=session_data.get("timestamp", datetime.datetime.now().isoformat()),
             html_files=session_data.get("html_files", []),
             output_folder=session_data.get("output_folder")
         ) 
         for session_id, session_data in sessions.items()
+        if session_data.get("user_id") == current_user.id  # Nur Sitzungen des authentifizierten Benutzers
     ]
+    
+    return user_sessions
 
 @app.get("/sessions/{session_id}/messages")
-def get_session_messages(session_id: str):
+async def get_session_messages(session_id: str, current_user: User = Depends(get_current_user)):
     """
     Gibt alle Nachrichten einer Session zurück.
     """
-    logger.info(f"GET /sessions/{session_id}/messages endpoint called")
+    logger.info(f"GET /sessions/{session_id}/messages endpoint called for user {current_user.id}")
     
-    if session_id not in session_messages:
-        # Falls es noch keine Nachrichten gibt, initialisiere mit Willkommensnachricht
-        session_messages[session_id] = [{
-            "id": str(uuid.uuid4()),
-            "content": "Hallo! Ich bin dein Finanzanalyst. Wie kann ich dir heute helfen?",
-            "sender": "assistant",
-            "timestamp": datetime.datetime.now().isoformat(),
-            "html_files": [],
-            "output_folder": sessions.get(session_id, {}).get("output_folder", "")
-        }]
-    
-    return session_messages[session_id]
+    # Prüfe, ob die Session existiert und zum Benutzer gehört
+    if session_id in sessions and sessions[session_id].get("user_id") == current_user.id:
+        if session_id not in session_messages:
+            # Falls es noch keine Nachrichten gibt, initialisiere mit Willkommensnachricht
+            session_messages[session_id] = [{
+                "id": str(uuid.uuid4()),
+                "user_id": current_user.id,
+                "content": "Hallo! Ich bin dein Finanzanalyst. Wie kann ich dir heute helfen?",
+                "sender": "assistant",
+                "timestamp": datetime.datetime.now().isoformat(),
+                "html_files": [],
+                "output_folder": sessions.get(session_id, {}).get("output_folder", "")
+            }]
+        
+        # Filtere Nachrichten nach Benutzer-ID
+        user_messages = [
+            msg for msg in session_messages[session_id]
+            if msg.get("user_id") == current_user.id
+        ]
+        
+        return user_messages
+    else:
+        # Session existiert nicht oder gehört nicht zum Benutzer
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Session nicht gefunden oder keine Berechtigung"
+        )
 
 @app.post("/sessions/{session_id}/messages")
-def add_session_message(session_id: str, message: AddMessageRequest):
+async def add_session_message(session_id: str, message: AddMessageRequest, current_user: User = Depends(get_current_user)):
     """
     Fügt eine neue Nachricht zu einer Session hinzu.
     """
-    logger.info(f"POST /sessions/{session_id}/messages endpoint called")
+    logger.info(f"POST /sessions/{session_id}/messages endpoint called for user {current_user.id}")
     
-    # Initialisiere die Nachrichtenliste, falls sie noch nicht existiert
-    if session_id not in session_messages:
-        session_messages[session_id] = []
-    
-    # Erstelle die neue Nachricht
-    new_message = {
-        "id": str(uuid.uuid4()),
-        "content": message.content,
-        "sender": message.sender,
-        "timestamp": datetime.datetime.now().isoformat(),
-        "html_files": message.html_files or [],
-        "output_folder": message.output_folder or sessions.get(session_id, {}).get("output_folder", "")
-    }
-    
-    # Füge die Nachricht hinzu
-    session_messages[session_id].append(new_message)
-    
-    # Aktualisiere die letzte Nachricht in der Session, falls es eine Benutzernachricht ist
-    if message.sender == "user" and session_id in sessions:
-        sessions[session_id]["last_message"] = message.content
-        sessions[session_id]["timestamp"] = new_message["timestamp"]
-    
-    return new_message
+    # Prüfe, ob die Session existiert und zum Benutzer gehört
+    if session_id in sessions and sessions[session_id].get("user_id") == current_user.id:
+        # Initialisiere die Nachrichtenliste, falls sie noch nicht existiert
+        if session_id not in session_messages:
+            session_messages[session_id] = []
+        
+        # Erstelle die neue Nachricht mit Benutzer-ID
+        new_message = {
+            "id": str(uuid.uuid4()),
+            "user_id": current_user.id,
+            "content": message.content,
+            "sender": message.sender,
+            "timestamp": datetime.datetime.now().isoformat(),
+            "html_files": message.html_files or [],
+            "output_folder": message.output_folder or sessions.get(session_id, {}).get("output_folder", "")
+        }
+        
+        # Füge die Nachricht hinzu
+        session_messages[session_id].append(new_message)
+        
+        # Aktualisiere auch die Session mit den HTML-Dateien
+        if message.sender == "user":
+            sessions[session_id]["last_message"] = message.content
+            sessions[session_id]["timestamp"] = new_message["timestamp"]
+        
+        return new_message
+    else:
+        # Session existiert nicht oder gehört nicht zum Benutzer
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Session nicht gefunden oder keine Berechtigung"
+        )
 
 class UpdateSessionRequest(BaseModel):
     last_message: Optional[str] = None
@@ -353,16 +417,24 @@ class UpdateSessionRequest(BaseModel):
     output_folder: Optional[str] = None
 
 @app.put("/sessions/{session_id}", response_model=BackendSession)
-def update_session(session_id: str, session_update: UpdateSessionRequest):
+async def update_session(session_id: str, session_update: UpdateSessionRequest, current_user: User = Depends(get_current_user)):
     """
     Updates an existing session or creates a new one if it doesn't exist.
     """
-    logger.info(f"PUT /sessions/{session_id} endpoint called with data: {session_update}")
+    logger.info(f"PUT /sessions/{session_id} endpoint called for user {current_user.id}")
     
-    # Erstelle eine neue Session, falls sie noch nicht existiert
-    if session_id not in sessions:
+    # Prüfe, ob die Session existiert und zum Benutzer gehört
+    if session_id in sessions:
+        if sessions[session_id].get("user_id") != current_user.id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Keine Berechtigung für diese Session"
+            )
+    else:
+        # Erstelle eine neue Session für diesen Benutzer
         sessions[session_id] = {
             "id": session_id,
+            "user_id": current_user.id,
             "last_message": "Neue Konversation",
             "timestamp": datetime.datetime.now().isoformat(),
             "html_files": [],
@@ -390,6 +462,7 @@ def update_session(session_id: str, session_update: UpdateSessionRequest):
     # Zurückgeben der aktualisierten Session
     return BackendSession(
         id=session_id,
+        user_id=current_user.id,
         last_message=sessions[session_id].get("last_message"),
         timestamp=sessions[session_id].get("timestamp"),
         html_files=sessions[session_id].get("html_files", []),
@@ -397,24 +470,40 @@ def update_session(session_id: str, session_update: UpdateSessionRequest):
     )
 
 @app.post("/ask", response_model=AskResponse)
-def ask_question(payload: AskRequest):
+async def ask_question(payload: AskRequest, current_user: User = Depends(get_current_user)):
     """
     Receives a user_id, session_id and a question, fetches the session's agent and runs the question.
     Session should be initialized via the /initialize_session endpoint first.
     """
     try:
-        logger.info(f"Received request: {payload}")
-        # Log the request payload in detail
-        logger.debug(f"Request payload details - session_id: {payload.session_id}, question: {payload.question}, dataset_type: {payload.dataset_type}, years: {payload.years}")
+        logger.info(f"Received request from user {current_user.id}: {payload}")
         
         session_id = payload.session_id
         question = payload.question
         dataset_type = payload.dataset_type
         years = payload.years
 
+        # Prüfe, ob die Session existiert und zum Benutzer gehört
+        if session_id in sessions:
+            if sessions[session_id].get("user_id") != current_user.id:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Keine Berechtigung für diese Session"
+                )
+        else:
+            # Erstelle eine neue Session für diesen Benutzer
+            sessions[session_id] = {
+                "id": session_id,
+                "user_id": current_user.id,
+                "last_message": "Neue Konversation",
+                "timestamp": datetime.datetime.now().isoformat(),
+                "html_files": [],
+                "output_folder": f"user_question_output_{session_id[:4]}"
+            }
+
         # Retrieve the per-session agent (assuming it's initialized)
         logger.info(f"Getting agent for session {session_id}")
-        agent_for_session = get_or_create_agent_for_session(session_id) # Filters are None here as agent is already initialized
+        agent_for_session = get_or_create_agent_for_session(session_id, current_user.id)
 
         # Run the agent in its own directory
         logger.info("Running agent in directory")
@@ -456,13 +545,14 @@ def ask_question(payload: AskRequest):
         output_folder_name = os.path.basename(output_directory)
         logger.info(f"Returning response with output folder: {output_folder_name}")
 
-        # Speichere die Assistentenantwort als Nachricht
-        logger.info(f"Saving assistant message to session {session_id}")
+        # Speichere die Assistentenantwort als Nachricht mit Benutzer-ID
+        logger.info(f"Saving assistant message to session {session_id} for user {current_user.id}")
         if session_id not in session_messages:
             session_messages[session_id] = []
             
         new_message = {
             "id": str(uuid.uuid4()),
+            "user_id": current_user.id,  # Setze Benutzer-ID in der Nachricht
             "content": response_text,
             "sender": "assistant",
             "timestamp": datetime.datetime.now().isoformat(),
@@ -471,13 +561,17 @@ def ask_question(payload: AskRequest):
         }
         session_messages[session_id].append(new_message)
 
-        # Aktualisiere auch die Session mit den HTML-Dateien
+        # Aktualisiere auch die Session mit den HTML-Dateien und Benutzer-ID
         if session_id in sessions:
             sessions[session_id]["html_files"] = html_files  # Alle HTML-Dateien für die NavBar
+            # Stelle sicher, dass die Benutzer-ID gesetzt ist
+            if "user_id" not in sessions[session_id]:
+                sessions[session_id]["user_id"] = current_user.id
         else:
             # Initialisiere die Session, falls sie noch nicht existiert
             sessions[session_id] = {
                 "id": session_id,
+                "user_id": current_user.id,
                 "last_message": question,
                 "timestamp": datetime.datetime.now().isoformat(),
                 "html_files": html_files,

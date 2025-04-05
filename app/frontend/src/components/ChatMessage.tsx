@@ -5,7 +5,7 @@ import { Message } from '@/lib/types';
 
 interface ChatMessageProps {
   message: Message;
-  sessionId: string;
+  sessionId?: string; // Optional machen
 }
 
 const ChatMessage: React.FC<ChatMessageProps> = ({ message, sessionId }) => {
@@ -26,10 +26,13 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message, sessionId }) => {
   // Fallback für den Fall, dass outputFolder nicht gesetzt ist
   const getHtmlUrl = (file: string) => {
     if (message.outputFolder) {
-      return `http://localhost:8000/user_output/${message.outputFolder}/${file}`;
-    } else {
-      // Fallback auf die alte URL-Struktur
+      return `/user_output/${message.outputFolder}/${file}`;
+    } else if (sessionId) {
+      // Fallback auf die alte URL-Struktur, wenn sessionId vorhanden ist
       return `/api/files/${sessionId}/${file}`;
+    } else {
+      // Wenn weder outputFolder noch sessionId vorhanden sind
+      return `/api/files/unknown/${file}`;
     }
   };
   

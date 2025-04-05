@@ -5,7 +5,7 @@ import React, { useState } from 'react';
 // Dies könnte an einem Pfadproblem oder einer fehlenden Datei liegen.
 // Für die Produktion sollte dieser Fehler behoben werden.
 import NavbarItem from '@/components/NavbarItem';
-import { createSession } from '@/lib/api';
+import { createSession } from '@/lib/authenticatedApi';
 import { SidebarProps } from '@/lib/types';
 import { generateUUID } from '@/lib/utils';
 import { useAuth } from '@/lib/auth/AuthContext';

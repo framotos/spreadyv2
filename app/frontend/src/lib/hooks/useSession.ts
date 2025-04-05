@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useSessionStorage } from '@/lib/hooks/useSessionStorage';
 import { Session } from '@/lib/types';
-import { createSession } from '@/lib/api';
+import { createSession } from '@/lib/authenticatedApi';
 import { generateUUID } from '@/lib/utils';
 
 // Session-Hook für die Verwaltung der aktuellen Session

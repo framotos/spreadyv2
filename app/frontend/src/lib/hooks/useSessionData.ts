@@ -1,8 +1,10 @@
 'use client';
 
-import { useState, useCallback, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { Session } from '@/lib/types';
-import { getSessions } from '@/lib/api';
+import { useAuth } from '@/lib/auth/AuthContext';
+import { getSessions, createSession } from '@/lib/authenticatedApi';
+import { generateUUID } from '@/lib/utils';
 
 /**
  * Custom Hook zur Verwaltung der Session-Daten.
@@ -11,63 +13,77 @@ import { getSessions } from '@/lib/api';
  * @param currentSessionId Die aktuelle Session-ID (zum automatischen Neuladen bei Änderungen)
  * @returns Ein Objekt mit den Sessions, dem Ladezustand und Funktionen zur Aktualisierung
  */
-export function useSessionData(currentSessionId: string | null) {
+export const useSessionData = (currentSessionId: string | null) => {
   const [sessions, setSessions] = useState<Session[]>([]);
-  const [isLoading, setIsLoading] = useState<boolean>(true);
-  const previousSessionId = useRef<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const { user } = useAuth();
 
-  /**
-   * Lädt alle Sessions vom Backend.
-   */
-  const loadSessions = useCallback(async () => {
-    try {
-      setIsLoading(true);
-      const sessionsData = await getSessions();
-      setSessions(sessionsData);
-    } catch (err) {
-      console.error('Fehler beim Laden der Sitzungen:', err);
-    } finally {
-      setIsLoading(false);
-    }
-  }, []); // keine Abhängigkeiten, sodass loadSessions stabil bleibt
-
-  // Lade Sessions nur beim ersten Render und bei tatsächlicher Änderung der Session-ID
+  // Lade Sitzungen vom Backend, wenn der Benutzer angemeldet ist
   useEffect(() => {
-    // Nur laden, wenn sich die Session-ID tatsächlich geändert hat
-    if (previousSessionId.current !== currentSessionId) {
-      loadSessions();
-      previousSessionId.current = currentSessionId;
-    }
-  }, [currentSessionId, loadSessions]);
+    const fetchSessions = async () => {
+      if (!user) {
+        setIsLoading(false);
+        return;
+      }
+
+      try {
+        setIsLoading(true);
+        const fetchedSessions = await getSessions();
+        setSessions(fetchedSessions);
+      } catch (error) {
+        console.error('Fehler beim Laden der Sitzungen:', error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchSessions();
+  }, [user]);
 
   /**
-   * Aktualisiert eine bestimmte Session oder lädt alle Sessions neu.
+   * Erstelle eine neue Sitzung, wenn keine existiert und currentSessionId gesetzt ist
    */
-  const updateSession = useCallback((updatedSession?: Session) => {
-    if (updatedSession) {
-      // Aktualisiere die Session direkt im State, ohne unnötige Neufetches
-      setSessions(prevSessions => {
-        const sessionIndex = prevSessions.findIndex(s => s.id === updatedSession.id);
-        if (sessionIndex !== -1) {
-          // Session existiert bereits, aktualisiere sie
-          const newSessions = [...prevSessions];
-          newSessions[sessionIndex] = updatedSession;
-          return newSessions;
-        } else {
-          // Neue Session, füge sie hinzu
-          return [updatedSession, ...prevSessions];
+  useEffect(() => {
+    const initializeSession = async () => {
+      if (currentSessionId && sessions.length === 0 && !isLoading && user) {
+        try {
+          const sessionId = generateUUID();
+          const newSession = await createSession(sessionId);
+          setSessions([newSession]);
+        } catch (error) {
+          console.error('Fehler beim Erstellen der Sitzung:', error);
         }
-      });
-    } else {
-      // Wenn keine Session übergeben wurde, lade alle Sessions neu
-      loadSessions();
+      }
+    };
+
+    initializeSession();
+  }, [currentSessionId, sessions, isLoading, user]);
+
+  /**
+   * Aktualisiere eine Sitzung
+   */
+  const updateSessionData = async (updatedSession?: Session) => {
+    if (!updatedSession || !user) return;
+
+    try {
+      const index = sessions.findIndex(s => s.id === updatedSession.id);
+      if (index === -1) {
+        // Neue Sitzung hinzufügen
+        setSessions(prev => [updatedSession, ...prev]);
+      } else {
+        // Bestehende Sitzung aktualisieren
+        const updatedSessions = [...sessions];
+        updatedSessions[index] = updatedSession;
+        setSessions(updatedSessions);
+      }
+    } catch (error) {
+      console.error('Fehler beim Aktualisieren der Sitzung:', error);
     }
-  }, [loadSessions]);
+  };
 
   return {
     sessions,
     isLoading,
-    loadSessions,
-    updateSession
+    updateSession: updateSessionData,
   };
-} 
+}; 
