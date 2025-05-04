@@ -30,3 +30,17 @@ app/frontend/.next/
 
 # Betriebssystem-Dateien
 **/.DS_Store
+
+# Environment variables - ignore all, except examples
+.env*
+!.env.example
+
+# Supabase local dev state
+supabase/
+
+# Ignore all data files (source and generated)
+apps/api/data/
+
+# Große Dateien
+# Keep ignoring original log file
+apps/api/debug.log
