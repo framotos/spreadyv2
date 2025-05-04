@@ -1,7 +1,0 @@
-pandas
-uvicorn
-fastapi
-matplotlib
-plotly
-openai
-dotenv
