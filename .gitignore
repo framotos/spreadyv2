@@ -44,3 +44,9 @@ apps/api/data/
 # Große Dateien
 # Keep ignoring original log file
 apps/api/debug.log
+
+# API specific logs
+apps/api/*.log
+
+# Agent output
+apps/api/user_output/

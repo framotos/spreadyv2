@@ -28,7 +28,7 @@ class FinanceAgent:
         api_key: str,
         api_base: str = "https://generativelanguage.googleapis.com/v1beta/openai/",
         model_id: str = "gemini-2.0-flash-exp",
-        verbosity_level: int = 1
+        verbosity_level: int = 2
     ):
         """
         Initialize the finance agent.
