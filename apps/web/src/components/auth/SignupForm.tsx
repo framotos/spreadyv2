@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { useAuth } from '@/lib/auth/AuthContext';
+import { useAuth } from '@neurofinance/auth';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 

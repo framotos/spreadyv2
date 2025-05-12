@@ -9,6 +9,11 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "@neurofinance/auth": "workspace:*",
+    "@neurofinance/hooks": "workspace:*",
+    "@neurofinance/ui": "workspace:*",
+    "@neurofinance/api-client": "workspace:*",
+    "@neurofinance/types": "workspace:*",
     "@supabase/supabase-js": "^2.49.4",
     "autoprefixer": "^10.4.17",
     "axios": "^1.6.7",

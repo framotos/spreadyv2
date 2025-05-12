@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { useAuth } from '@/lib/auth/AuthContext';
+import { useAuth } from '@neurofinance/auth';
 
 const ResetPasswordForm: React.FC = () => {
   const { resetPassword } = useAuth();

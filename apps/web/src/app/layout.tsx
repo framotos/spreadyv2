@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import "../styles/globals.css";
 import '../styles/fonts.css';
-import { AuthProvider } from '@/lib/auth/AuthContext';
+import ClientProviders from "../components/ClientProviders";
 
 export const metadata: Metadata = {
   title: "NeuroFinance - Finanzanalyse mit KI",
@@ -16,11 +16,11 @@ export default function RootLayout({
   return (
     <html lang="de">
       <body>
-        <AuthProvider>
+        <ClientProviders>
           <main className="w-full">
             {children}
           </main>
-        </AuthProvider>
+        </ClientProviders>
       </body>
     </html>
   );

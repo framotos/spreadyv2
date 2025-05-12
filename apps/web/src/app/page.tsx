@@ -3,29 +3,20 @@
 import React from 'react';
 import ChatContainer from '@/components/ChatContainer';
 import Sidebar from '@/components/Sidebar';
-import { useSessionStorage } from '@/lib/hooks/useSessionStorage';
-import { useSessionData } from '@/lib/hooks/useSessionData';
-import { useHtmlFileSelection } from '@/lib/hooks/useHtmlFileSelection';
+import { useSessionManagement } from '@neurofinance/hooks';
 import ProtectedRoute from '@/components/auth/ProtectedRoute';
 
 export default function Home() {
-  // Verwende die modularen Hooks für verschiedene Aspekte der Anwendung
-  // useSessionStorage übernimmt bereits die Initialisierung im internen useEffect
-  const { currentSessionId, setCurrentSessionId } = useSessionStorage();
-  const { sessions, isLoading, updateSession } = useSessionData(currentSessionId);
-  const { selectedFile, selectFile, resetSelection } = useHtmlFileSelection();
-
-  // Handler für die Auswahl einer Sitzung
-  const handleSessionSelect = (sessionId: string) => {
-    setCurrentSessionId(sessionId);
-    resetSelection(); // Zurücksetzen der HTML-Dateiauswahl bei Sitzungswechsel
-  };
-  
-  // Handler für die Auswahl einer HTML-Datei
-  const handleHtmlFileSelect = (fileName: string, outputFolder: string, sessionId: string) => {
-    setCurrentSessionId(sessionId);
-    selectFile(fileName, outputFolder);
-  };
+  // Use the consolidated session management hook
+  const { 
+    currentSessionId, 
+    selectedFile, 
+    sessions,
+    isLoading,
+    handleSessionSelect,
+    handleHtmlFileSelect,
+    updateSession
+  } = useSessionManagement();
 
   return (
     <ProtectedRoute redirectTo="/login">
@@ -39,7 +30,7 @@ export default function Home() {
           isLoading={isLoading}
         />
 
-        {/* Hauptinhalt */}
+        {/* Main content */}
         <div className="flex-1 flex flex-col">
           <header className="bg-white p-4 shadow-sm">
             <div className="w-full h-7 flex items-center">
@@ -57,12 +48,11 @@ export default function Home() {
                 />
               ) : (
                 <div className="flex items-center justify-center h-full">
-                  <p className="text-gray-500">Lädt...</p>
+                  <p className="text-gray-500">Loading...</p>
                 </div>
               )}
             </div>
           </main>
-
         </div>
       </div>
     </ProtectedRoute>

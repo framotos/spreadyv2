@@ -1,4 +1,5 @@
 import os
+from typing import Dict
 from pydantic_settings import BaseSettings
 from dotenv import load_dotenv
 
@@ -27,8 +28,18 @@ class Settings(BaseSettings):
         "http://localhost:3003"
     ]
 
-    # Logging level
-    LOG_LEVEL: str = "DEBUG"
+    # Logging settings
+    LOG_LEVEL: str = "INFO"
+    LOG_TO_FILE: bool = True
+    LOG_FILE_PATH: str = "api.log"
+    LOGGER_LEVELS: Dict[str, str] = {
+        "uvicorn": "INFO",
+        "uvicorn.access": "INFO",
+        "fastapi": "INFO",
+        "sqlalchemy": "WARNING",
+        "httpx": "WARNING",
+        "smolagents": "INFO"
+    }
 
     class Config:
         # This allows loading from environment variables automatically

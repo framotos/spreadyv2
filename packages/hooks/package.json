@@ -1,0 +1,44 @@
+{
+  "name": "@neurofinance/hooks",
+  "version": "0.1.0",
+  "description": "Shared React hooks for NeuroFinance",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsup src/index.ts --format esm,cjs --dts --external react",
+    "dev": "tsup src/index.ts --format esm,cjs --dts --external react --watch",
+    "clean": "rm -rf dist",
+    "lint": "eslint \"src/**/*.ts*\"",
+    "test": "jest"
+  },
+  "keywords": [
+    "hooks",
+    "react",
+    "neurofinance"
+  ],
+  "author": "",
+  "license": "UNLICENSED",
+  "private": true,
+  "peerDependencies": {
+    "react": "^18.3.1"
+  },
+  "devDependencies": {
+    "@swc/core": "^1.11.24",
+    "@types/react": "^18.3.1",
+    "@types/node": "^20.0.0",
+    "eslint": "^8.0.0",
+    "eslint-plugin-react": "^7.33.2",
+    "eslint-plugin-react-hooks": "^4.6.0",
+    "@typescript-eslint/eslint-plugin": "^6.21.0",
+    "@typescript-eslint/parser": "^6.21.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "tsup": "^7.0.0",
+    "typescript": "^5.0.0"
+  },
+  "dependencies": {
+    "@neurofinance/types": "workspace:*",
+    "@neurofinance/api-client": "workspace:*",
+    "@neurofinance/auth": "workspace:*"
+  }
+}

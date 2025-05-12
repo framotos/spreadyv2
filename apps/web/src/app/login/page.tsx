@@ -3,7 +3,7 @@
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import LoginForm from '@/components/auth/LoginForm';
-import { useAuth } from '@/lib/auth/AuthContext';
+import { useAuth } from '@neurofinance/auth';
 
 export default function LoginPage() {
   const { user, loading } = useAuth();

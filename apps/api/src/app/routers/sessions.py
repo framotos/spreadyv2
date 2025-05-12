@@ -1,217 +1,152 @@
 import uuid
 import datetime
-from typing import List, Optional
+from typing import List
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel
 
-# Assuming User model and dependency are in core.auth
-from ..core.auth import User, get_current_user 
-# Assuming settings are available (adjust path if needed)
-from ..core.config import settings
+# Import models from models directory
+from ..models.session import BackendSession, UpdateSessionRequest
+from ..models.message import Message, AddMessageRequest
 
-# TODO: Replace these in-memory dicts with a proper service/repository layer later
-sessions: dict = {}
-session_messages: dict = {}
+# Import dependencies
+from ..core.auth import User, get_current_user
+from ..dependencies import SessionRepositoryDep, MessageRepositoryDep
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
-# --- Pydantic Models (Moved from debug_main.py) --- 
-
-class BackendSession(BaseModel):
-    id: str
-    user_id: Optional[str] = None
-    last_message: Optional[str] = None
-    timestamp: Optional[str] = None
-    html_files: Optional[List[str]] = None
-    output_folder: Optional[str] = None
-
-class Message(BaseModel):
-    id: str
-    user_id: Optional[str] = None 
-    content: str
-    sender: str  # 'user' or 'assistant'
-    timestamp: str
-    html_files: Optional[List[str]] = None
-    output_folder: Optional[str] = None
-
-class AddMessageRequest(BaseModel):
-    content: str
-    sender: str
-    # user_id is implicitly the current_user.id, removed from request model
-    # user_id: Optional[str] = None 
-    html_files: Optional[List[str]] = None
-    output_folder: Optional[str] = None # TODO: Should this be settable by client?
-
-class UpdateSessionRequest(BaseModel):
-    last_message: Optional[str] = None
-    html_files: Optional[List[str]] = None
-    output_folder: Optional[str] = None
-
-# --- API Endpoints (Moved from debug_main.py) ---
+# --- API Endpoints ---
 
 @router.get("/", response_model=List[BackendSession])
-async def get_sessions_route(current_user: User = Depends(get_current_user)):
+async def get_sessions_route(
+    current_user: User = Depends(get_current_user),
+    session_repository: SessionRepositoryDep = None
+):
     """
     Returns a list of all sessions for the authenticated user.
     """
     logger.info(f"GET /sessions endpoint called for user {current_user.id}")
     
-    # Filtere Sitzungen nach Benutzer-ID
-    user_sessions = [
-        BackendSession(
-            id=session_id,
-            user_id=session_data.get("user_id"),
-            last_message=session_data.get("last_message", "Neue Konversation"),
-            timestamp=session_data.get("timestamp", datetime.datetime.now().isoformat()),
-            html_files=session_data.get("html_files", []),
-            output_folder=session_data.get("output_folder")
-        ) 
-        for session_id, session_data in sessions.items()
-        if session_data.get("user_id") == current_user.id  # Nur Sitzungen des authentifizierten Benutzers
-    ]
+    # Get sessions for the user
+    user_sessions = await session_repository.get_by_user_id(current_user.id)
     
     return user_sessions
 
 @router.get("/{session_id}/messages", response_model=List[Message])
-async def get_session_messages_route(session_id: str, current_user: User = Depends(get_current_user)):
+async def get_session_messages_route(
+    session_id: str, 
+    current_user: User = Depends(get_current_user),
+    session_repository: SessionRepositoryDep = None,
+    message_repository: MessageRepositoryDep = None
+):
     """
-    Gibt alle Nachrichten einer Session zurück.
+    Returns all messages for a session.
     """
     logger.info(f"GET /sessions/{session_id}/messages endpoint called for user {current_user.id}")
     
-    # Prüfe, ob die Session existiert und zum Benutzer gehört
-    if session_id in sessions and sessions[session_id].get("user_id") == current_user.id:
-        if session_id not in session_messages:
-            # Falls es noch keine Nachrichten gibt, initialisiere mit Willkommensnachricht
-            # TODO: Move default message creation elsewhere?
-            session_messages[session_id] = [{
-                "id": str(uuid.uuid4()),
-                "user_id": current_user.id,
-                "content": "Hallo! Ich bin dein Finanzanalyst. Wie kann ich dir heute helfen?",
-                "sender": "assistant",
-                "timestamp": datetime.datetime.now().isoformat(),
-                "html_files": [],
-                "output_folder": sessions.get(session_id, {}).get("output_folder", "")
-            }]
-        
-        # Filtere Nachrichten nach Benutzer-ID (redundant check if session check passed?)
-        user_messages = [
-            Message(**msg) for msg in session_messages[session_id]
-            if msg.get("user_id") == current_user.id
-        ]
-        
-        return user_messages
-    else:
-        # Session existiert nicht oder gehört nicht zum Benutzer
+    # Check if the session exists and belongs to the user
+    if not await session_repository.belongs_to_user(session_id, current_user.id):
         logger.warning(f"Session {session_id} not found or not owned by user {current_user.id}")
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Session nicht gefunden oder keine Berechtigung"
         )
+    
+    # Get messages for the session
+    messages = await message_repository.get_by_session_id(session_id, current_user.id)
+    
+    # Add welcome message if there are no messages
+    if not messages:
+        # Get session to get output folder
+        session = await session_repository.get_by_id(session_id)
+        output_folder = session.output_folder if session else None
+        
+        # Add welcome message
+        welcome_message = await message_repository.add_welcome_message(
+            session_id=session_id,
+            user_id=current_user.id,
+            output_folder=output_folder
+        )
+        
+        messages = [welcome_message]
+    
+    return messages
 
 @router.post("/{session_id}/messages", response_model=Message)
-async def add_session_message_route(session_id: str, message: AddMessageRequest, current_user: User = Depends(get_current_user)):
+async def add_session_message_route(
+    session_id: str, 
+    message: AddMessageRequest, 
+    current_user: User = Depends(get_current_user),
+    session_repository: SessionRepositoryDep = None,
+    message_repository: MessageRepositoryDep = None
+):
     """
-    Fügt eine neue Nachricht zu einer Session hinzu.
+    Adds a new message to a session.
     """
     logger.info(f"POST /sessions/{session_id}/messages endpoint called for user {current_user.id}")
     
-    # Prüfe, ob die Session existiert und zum Benutzer gehört
-    if session_id in sessions and sessions[session_id].get("user_id") == current_user.id:
-        # Initialisiere die Nachrichtenliste, falls sie noch nicht existiert
-        if session_id not in session_messages:
-            session_messages[session_id] = []
-        
-        # Erstelle die neue Nachricht mit Benutzer-ID
-        new_message_data = {
-            "id": str(uuid.uuid4()),
-            "user_id": current_user.id,
-            "content": message.content,
-            "sender": message.sender,
-            "timestamp": datetime.datetime.now().isoformat(),
-            "html_files": message.html_files or [],
-            "output_folder": message.output_folder or sessions.get(session_id, {}).get("output_folder", "")
-        }
-        
-        # Füge die Nachricht hinzu (as dict first)
-        session_messages[session_id].append(new_message_data)
-        
-        # Aktualisiere Session Metadaten (nur für user Nachrichten?)
-        if message.sender == "user":
-            sessions[session_id]["last_message"] = message.content
-            sessions[session_id]["timestamp"] = new_message_data["timestamp"]
-        
-        return Message(**new_message_data)
-    else:
-        # Session existiert nicht oder gehört nicht zum Benutzer
+    # Check if the session exists and belongs to the user
+    if not await session_repository.belongs_to_user(session_id, current_user.id):
         logger.warning(f"Session {session_id} not found or not owned by user {current_user.id}")
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Session nicht gefunden oder keine Berechtigung"
         )
+    
+    # Get session to get output folder if not provided
+    session = await session_repository.get_by_id(session_id)
+    output_folder = message.output_folder or (session.output_folder if session else "")
+    
+    # Add message to session
+    new_message = await message_repository.add_message(
+        session_id=session_id,
+        user_id=current_user.id,
+        content=message.content,
+        sender=message.sender,
+        html_files=message.html_files,
+        output_folder=output_folder
+    )
+    
+    # Update session metadata if it's a user message
+    if message.sender == "user":
+        await session_repository.update(session_id, {
+            "last_message": message.content,
+            "timestamp": datetime.datetime.now().isoformat()
+        })
+    
+    return new_message
 
 @router.put("/{session_id}", response_model=BackendSession)
-async def update_session_route(session_id: str, session_update: UpdateSessionRequest, current_user: User = Depends(get_current_user)):
+async def update_session_route(
+    session_id: str, 
+    session_update: UpdateSessionRequest, 
+    current_user: User = Depends(get_current_user),
+    session_repository: SessionRepositoryDep = None
+):
     """
     Updates an existing session or creates a new one if it doesn't exist.
     """
     logger.info(f"PUT /sessions/{session_id} endpoint called for user {current_user.id}")
     
-    # Prüfe, ob die Session existiert und zum Benutzer gehört, sonst erstelle sie
-    if session_id not in sessions or sessions[session_id].get("user_id") != current_user.id:
-        # Check if it exists but belongs to another user (should be rare, but check)
-        if session_id in sessions and sessions[session_id].get("user_id") != current_user.id:
-            logger.error(f"Attempt by user {current_user.id} to update session {session_id} owned by {sessions[session_id].get('user_id')}")
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Keine Berechtigung für diese Session"
-            )
-        # Create new session if it doesn't exist for this user
-        logger.info(f"Creating new session {session_id} for user {current_user.id}")
-        sessions[session_id] = {
-            "id": session_id,
-            "user_id": current_user.id,
-            "last_message": "Neue Konversation", # Default message
-            "timestamp": datetime.datetime.now().isoformat(),
-            "html_files": [],
-             # Generate output folder name using full ID
-            "output_folder": f"user_question_output_{session_id}" 
-        }
-        # Initialize message list for new session
-        if session_id not in session_messages:
-            session_messages[session_id] = []
-
-    # Session exists and belongs to the user, proceed with update
-    session_data = sessions[session_id]
-    updated = False
-
-    if session_update.last_message is not None:
-        session_data["last_message"] = session_update.last_message
-        updated = True
-    
-    if session_update.output_folder is not None:
-        session_data["output_folder"] = session_update.output_folder
-        updated = True
-    
-    if session_update.html_files is not None:
-        # Append unique new files
-        current_html_files = set(session_data.get("html_files", []))
-        new_files_added = False
-        for html_file in session_update.html_files:
-            if html_file not in current_html_files:
-                current_html_files.add(html_file)
-                new_files_added = True
-        if new_files_added:
-            session_data["html_files"] = sorted(list(current_html_files))
-            updated = True
-    
-    # Update timestamp only if other fields were updated
-    if updated:
-        session_data["timestamp"] = datetime.datetime.now().isoformat()
-    
-    # Return the potentially updated session state
-    return BackendSession(**session_data) 
+    try:
+        # Create or update session
+        updated_session = await session_repository.create_or_update(
+            session_id=session_id,
+            user_id=current_user.id,
+            data={
+                "last_message": session_update.last_message,
+                "html_files": session_update.html_files,
+                "output_folder": session_update.output_folder
+            }
+        )
+        
+        return updated_session
+    except ValueError as e:
+        # Session exists but belongs to another user
+        logger.error(f"Error updating session: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Keine Berechtigung für diese Session"
+        ) 

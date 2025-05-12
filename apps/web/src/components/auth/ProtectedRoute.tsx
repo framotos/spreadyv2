@@ -1,8 +1,7 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { useEffect } from 'react';
-import { useAuth } from '@/lib/auth/AuthContext';
+import { ProtectedRoute as AuthProtectedRoute, useAuth } from '@neurofinance/auth';
 
 interface ProtectedRouteProps {
   children: React.ReactNode;
@@ -13,26 +12,25 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
   children,
   redirectTo = '/login',
 }) => {
-  const { user, loading } = useAuth();
   const router = useRouter();
+  const { user, loading } = useAuth();
 
-  useEffect(() => {
-    if (!loading && !user) {
-      router.push(redirectTo);
-    }
-  }, [user, loading, router, redirectTo]);
+  // Custom loading component
+  const loadingComponent = (
+    <div className="flex justify-center items-center min-h-screen">
+      <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-teal-500"></div>
+    </div>
+  );
 
-  // Show nothing while loading
-  if (loading) {
-    return (
-      <div className="flex justify-center items-center min-h-screen">
-        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-teal-500"></div>
-      </div>
-    );
-  }
-
-  // If user is authenticated, render children
-  return user ? <>{children}</> : null;
+  return (
+    <AuthProtectedRoute 
+      router={router} 
+      redirectTo={redirectTo}
+      loadingComponent={loadingComponent}
+    >
+      {children}
+    </AuthProtectedRoute>
+  );
 };
 
 export default ProtectedRoute; 

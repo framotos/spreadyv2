@@ -1,14 +1,14 @@
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
-import { ChatContainerProps, Message } from '@/lib/types';
-import ChatInput from './ChatInput';
-import ChatMessage from './ChatMessage';
-import { getSessionMessages, askQuestion } from '@/lib/authenticatedApi';
-import { useAuth } from '@/lib/auth/AuthContext';
+import React, { useState, useEffect } from 'react';
+import { Message } from '@neurofinance/types';
+import { ChatInput, ChatContainer as UIChatContainer } from '@neurofinance/ui';
+import { useApiClient } from '@/lib/hooks/useApiClient';
+import { useAuth } from '@neurofinance/auth';
+import type { ChatContainerProps } from '@/lib/types';
 
 /**
- * Container-Komponente für den Chat-Bereich
+ * Application-specific ChatContainer that uses the reusable ChatContainer component
  */
 const ChatContainer: React.FC<ChatContainerProps> = ({ 
   currentSessionId, 
@@ -17,52 +17,30 @@ const ChatContainer: React.FC<ChatContainerProps> = ({
 }) => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(false);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
-  const { user } = useAuth();
+  const { apiService } = useApiClient();
+  const { session } = useAuth();
 
-  // Nachrichten laden, wenn die Session sich ändert
+  // Load messages when session changes
   useEffect(() => {
     const fetchMessages = async () => {
-      if (!currentSessionId || !user) return;
+      if (!currentSessionId || !apiService) return;
       
       try {
-        const fetchedMessages = await getSessionMessages(currentSessionId);
+        const fetchedMessages = await apiService.getSessionMessages(currentSessionId);
         setMessages(fetchedMessages);
       } catch (error) {
-        console.error('Fehler beim Laden der Nachrichten:', error);
+        console.error('Error loading messages:', error);
       }
     };
     
     fetchMessages();
-  }, [currentSessionId, user]);
+  }, [currentSessionId, apiService]);
 
-  // Nachrichtenbereich scrollen, wenn neue Nachrichten eintreffen
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
-
-  // Ausgewählte HTML-Datei anzeigen
-  useEffect(() => {
-    if (selectedHtmlFile) {
-      const iframeContainer = document.getElementById('iframe-container');
-      if (iframeContainer) {
-        iframeContainer.innerHTML = ''; // Leere den Container
-        
-        const iframe = document.createElement('iframe');
-        iframe.src = `/user_output/${selectedHtmlFile.outputFolder}/${selectedHtmlFile.fileName}`;
-        iframe.className = 'w-full h-full border-0';
-        iframe.title = selectedHtmlFile.fileName;
-        
-        iframeContainer.appendChild(iframe);
-      }
-    }
-  }, [selectedHtmlFile]);
-
-  // Nachricht senden
+  // Send message
   const handleSendMessage = async (message: string) => {
-    if (!message.trim() || !currentSessionId || !user) return;
+    if (!message.trim() || !currentSessionId || !apiService) return;
     
-    // Optimistisches Update der UI
+    // Optimistic UI update
     const userMessage: Message = {
       id: Date.now().toString(),
       content: message,
@@ -73,19 +51,36 @@ const ChatContainer: React.FC<ChatContainerProps> = ({
     setIsLoading(true);
     
     try {
-      // Anfrage an das Backend senden
-      const { message: assistantMessage, updatedSession } = await askQuestion(currentSessionId, message);
+      // Add user message to the session
+      await apiService.addMessage(currentSessionId, message, 'user');
       
-      // Antwort hinzufügen
+      // Send request to backend
+      const response = await apiService.askQuestion(currentSessionId, message);
+      
+      // Add response as new message
+      const assistantMessage: Message = {
+        id: Date.now().toString(),
+        content: response.answer,
+        sender: 'assistant',
+        htmlFiles: response.html_files,
+        outputFolder: response.output_folder
+      };
+      
       setMessages(prev => [...prev, assistantMessage]);
       
-      // Session aktualisieren
-      if (updatedSession) {
-        onSessionUpdate(updatedSession);
+      // Update session with new HTML files
+      if (onSessionUpdate) {
+        onSessionUpdate({
+          id: currentSessionId,
+          lastMessage: message,
+          timestamp: new Date().toISOString(),
+          htmlFiles: response.html_files,
+          outputFolder: response.output_folder
+        });
       }
     } catch (error) {
-      console.error('Fehler beim Senden der Nachricht:', error);
-      // Fehlerbehandlung hier...
+      console.error('Error sending message:', error);
+      // Error handling here...
     } finally {
       setIsLoading(false);
     }
@@ -93,33 +88,29 @@ const ChatContainer: React.FC<ChatContainerProps> = ({
 
   return (
     <div className="flex flex-col h-full">
-      {/* Nachrichten */}
-      <div className="flex-1 overflow-auto p-4">
-        {messages.length > 0 ? (
-          <div className="space-y-4">
-            {messages.map((msg) => (
-              <ChatMessage
-                key={msg.id}
-                message={msg}
-              />
-            ))}
-            <div ref={messagesEndRef} />
-          </div>
-        ) : (
-          <div className="flex items-center justify-center h-full text-gray-500">
-            <p>Keine Nachrichten in dieser Sitzung. Starte eine Konversation!</p>
-          </div>
-        )}
-      </div>
+      {/* Main chat area */}
+      <UIChatContainer
+        messages={messages}
+        isLoading={isLoading}
+        loadingMessage="Loading..."
+        emptyMessage="No messages in this session. Start a conversation!"
+        htmlBaseUrl="/user_output"
+      />
       
-      {/* HTML-Visualisierung */}
+      {/* HTML visualization */}
       {selectedHtmlFile && (
         <div className="flex-1 border-t border-gray-200">
-          <div id="iframe-container" className="w-full h-full"></div>
+          <div id="iframe-container" className="w-full h-full">
+            <iframe 
+              src={`/user_output/${selectedHtmlFile.outputFolder}/${selectedHtmlFile.fileName}`}
+              className="w-full h-full border-0"
+              title={selectedHtmlFile.fileName}
+            />
+          </div>
         </div>
       )}
       
-      {/* Eingabefeld */}
+      {/* Input field */}
       <div className="border-t border-gray-200 p-4">
         <ChatInput onSendMessage={handleSendMessage} isLoading={isLoading} />
       </div>

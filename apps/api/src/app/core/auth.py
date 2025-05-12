@@ -9,7 +9,7 @@ from pydantic import BaseModel
 # Removed: from dotenv import load_dotenv
 
 # Import settings
-from core.config import settings
+from .config import settings
 
 # Removed: Lade Umgebungsvariablen
 # Removed: load_dotenv()
@@ -57,7 +57,10 @@ def decode_jwt(token: str) -> Dict[str, Any]:
             settings.JWT_SECRET, # Use secret from settings
             algorithms=[settings.JWT_ALGORITHM], # Use algorithm from settings
             # options={"verify_signature": False} # Keep verification disabled for now per original code
-            options={"verify_signature": True} # Enable signature verification
+            options={
+                "verify_signature": True,  # Enable signature verification
+                "verify_aud": False  # Disable audience verification
+            }
         )
         
         # Log für Debugging

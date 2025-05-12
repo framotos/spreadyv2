@@ -3,7 +3,7 @@
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import SignupForm from '@/components/auth/SignupForm';
-import { useAuth } from '@/lib/auth/AuthContext';
+import { useAuth } from '@neurofinance/auth';
 
 export default function SignupPage() {
   const { user, loading } = useAuth();

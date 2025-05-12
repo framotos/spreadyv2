@@ -2,9 +2,7 @@
 
 import axios from 'axios';
 import { apiClient } from './apiClient';
-import type { AskRequest, AskResponse, Session, BackendSession, Message } from '@/lib/types';
-// Keep type imports even if fields are removed, as the base interfaces are still used
-import type { BackendMessage } from './types';
+import type { AskRequest, AskResponse, Session, BackendSession, Message, BackendMessage } from '@neurofinance/types';
 
 // Cache-Funktionalität (hier vereinfacht)
 let sessionsCache: Session[] | null = null;

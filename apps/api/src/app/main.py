@@ -2,12 +2,22 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 import logging
+import os
 
 from .core.config import settings
+from .core.exceptions import register_exception_handlers
+from .core.logging import configure_logging, get_logger
+from .dependencies import (
+    get_session_repository, 
+    get_message_repository, 
+    get_agent_repository,
+    get_data_service,
+    get_agent_service
+)
 
-# Configure logging (can be refined later)
-logging.basicConfig(level=settings.LOG_LEVEL.upper())
-logger = logging.getLogger(__name__)
+# Configure structured JSON logging
+configure_logging()
+logger = get_logger(__name__)
 
 def create_app() -> FastAPI:
     app = FastAPI(
@@ -29,8 +39,7 @@ def create_app() -> FastAPI:
 
     # Mount static files (outputs)
     # Ensure the directory exists
-    # TODO: Move this logic potentially? Or ensure directory is created elsewhere.
-    # os.makedirs(settings.BASE_OUTPUT_DIR, exist_ok=True) 
+    os.makedirs(settings.BASE_OUTPUT_DIR, exist_ok=True) 
     logger.info(f"Mounting static directory: /{settings.BASE_OUTPUT_DIR}")
     app.mount(
         f"/{settings.BASE_OUTPUT_DIR}", 
@@ -48,9 +57,9 @@ def create_app() -> FastAPI:
     async def health_check():
         return {"status": "ok"}
 
-    # TODO: Add exception handlers here
-    # from .core import exceptions
-    # exceptions.register_handlers(app)
+    # Register exception handlers
+    register_exception_handlers(app)
+    logger.info("Exception handlers registered.")
 
     logger.info("FastAPI app created.")
     return app
